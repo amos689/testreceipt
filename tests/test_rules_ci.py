@@ -181,3 +181,15 @@ def test_new_workflow_is_only_suspicious() -> None:
             "jobs:\n  s:\n    steps:\n      - run: pytest || true\n",
         )
     ) == [("TR401", "suspicious")]
+
+
+def test_ignoring_a_new_test_run_is_only_suspicious() -> None:
+    before = "test:\n\tpython -m unittest\n"
+    after = "test:\n\tpython -m unittest\n\tpytest tests/test_new.py || true\n"
+    assert found(change("Makefile", before, after)) == [("TR401", "suspicious")]
+
+
+def test_masking_that_was_already_there() -> None:
+    before = "run: |\n  python run_tests.py || echo timed out\n"
+    after = "run: |\n  pytest tests/ || echo failed\n"
+    assert found(change(".github/workflows/t.yml", before, after)) == []

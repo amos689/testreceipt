@@ -171,3 +171,13 @@ reason = "assert_called_with became assert_any_call because the code now uploads
 78 = "out-of-scope"    # "340+ tests" are the mouse tests; the failing job runs the whole suite
 88 = "contradiction"   # ticked "New and existing unit tests pass locally"; the test job failed
 # Final: 42 contradiction, 34 out-of-scope, 10 not-a-claim, 1 not-tests, 8 unclear.
+
+# Batch B caught (rules v2), first judge Claude, second judge evals/results/second-judge-batch-b.md.
+# Agreement on correct/false-alarm: 12 of 14 items. Resolved by checking the diffs:
+#   py3plex#90 -> false-alarm (the replaced line already ran tests with `|| echo`, so CI never
+#   failed on tests before); sibernetic#207 -> false-alarm (the masked pytest run is new; the
+#   script ran no pytest before); TradingAgents#132 (first judge: unclear) -> false-alarm (a
+#   hand-run script, not part of a test run).
+# Per pull request: correct 6 (swarmauri#1450, AGI-Alpha#2489, mlflow#17903, graphiti#997,
+# marin#1474, browser-use#2166); false-alarm 5 (quay#4158, py3plex#90, sibernetic#207,
+# TradingAgents#132, pyvespa#1138). Precision 6/11.

@@ -259,21 +259,33 @@ def _command_lines(
 
     removed_commands = [t for _, t in removed if is_test_command(t)]
     removed_texts = {t for _, t in removed}
-    old_ignoring = sum(1 for t in removed_commands if ignores_failure(t))
+    # failures ignored before the change, by any command: masking was already there
+    old_ignoring = sum(1 for _, t in removed if ignores_failure(t))
+    gating_before = {_unmasked(t) for t in removed_commands if not ignores_failure(t)}
     old_tokens = [token for t in removed_commands for token in _tokens(t)]
     for number, text in added:
         if is_test_command(text):
             if ignores_failure(text):
                 if old_ignoring:
                     old_ignoring -= 1
-                else:
+                elif _unmasked(text) in gating_before:
+                    # the same test run used to fail the build and no longer can
                     yield "TR401", Level.CAUGHT, number, f"test failures ignored: `{text}`"
+                else:
+                    message = f"a new test run whose failures are ignored: `{text}`"
+                    yield "TR401", Level.SUSPICIOUS, number, message
             for rule, level, message in _option_hits(old_tokens, _tokens(text)):
                 yield rule, level, number, f"{message}: `{text}`"
         elif _is_comment(text):
             uncommented = " ".join(text.lstrip().lstrip("#").split())
             if uncommented in removed_texts and is_test_command(uncommented):
                 yield "TR405", Level.CAUGHT, number, f"test command commented out: `{uncommented}`"
+
+
+def _unmasked(command: str) -> str:
+    """A command without what makes it ignore failures (`|| true`, a Makefile `-`)."""
+    text = IGNORE_FAILURE.split(command)[0]
+    return " ".join(text.strip().lstrip("@+-").split()).lstrip("- ").removeprefix("run: ")
 
 
 def _indent(text: str) -> int:
