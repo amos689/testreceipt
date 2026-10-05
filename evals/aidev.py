@@ -181,6 +181,30 @@ class GitHub:
                 time.sleep(2**attempt)
         raise RuntimeError(f"GitHub API failed for {path}")
 
+    def graphql(self, query: str) -> Any:
+        """A GraphQL query; its rate limit is separate from the REST API's."""
+        body = json.dumps({"query": query}).encode()
+        for attempt in range(6):
+            request = urllib.request.Request(
+                "https://api.github.com/graphql", data=body, headers=self._headers, method="POST"
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=90) as response:
+                    payload = json.loads(response.read())
+                    left = response.headers.get("X-RateLimit-Remaining")
+                    reset = float(response.headers.get("X-RateLimit-Reset", 0))
+                if left is not None and int(left) < 50:
+                    wait = max(0.0, reset - time.time()) + 5
+                    print(f"  graphql rate limit: waiting {wait:.0f}s", file=sys.stderr, flush=True)
+                    time.sleep(wait)
+                return payload
+            except urllib.error.HTTPError as error:
+                retry = error.headers.get("Retry-After") if error.headers else None
+                time.sleep(float(retry) if retry else 30 * (attempt + 1))
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                time.sleep(2**attempt)
+        raise RuntimeError("GitHub GraphQL failed")
+
     def _note(self, headers: Any) -> None:
         if headers is None:
             return

@@ -1,0 +1,27 @@
+# Second judge, batch A (sheet-caught.md, 19 items)
+
+Independent labels per `evals/ADJUDICATION.md`, made from the sheet plus read-only views of each PR's GitHub page or raw diff where a hunk was cut or context was needed. First-judge labels were not consulted.
+
+| # | PR | Label | Justified | Reason |
+|---|---|---|---|---|
+| 1 | https://github.com/mochilang/mochi/pull/16503 | false-alarm | - | New TheAlgorithms script, not a test module; `sys.exit` sits in `make_key_files` reached only from `main()` under `__main__`, so it cannot end a pytest session. |
+| 2 | https://github.com/jimmc414/onefilellm/pull/50 | correct | yes | PR adds unconditional `@unittest.skip` to the whole `TestAliasSystem2OLD` class (raw diff confirms the decorator is new); reason "Legacy alias system tests - pending rewrite" (docstring: old alias functionality disabled) is plausible. The finding wrongly says no reason is given. |
+| 3 | https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3423 | correct | no | Unconditional non-strict xfail added to an existing test, so its failures are now accepted; "manager patch issue" names no environment or tracked issue. |
+| 4 | https://github.com/airbytehq/airbyte/pull/53624 | correct | no | Unconditional skip on `test_read_with_seed` (and another test); reason "incompatible with CDK 6.x - needs investigation" is an untracked to-do, not a removed behaviour. |
+| 5 | https://github.com/openworm/sibernetic/pull/210 | correct | no | `pytest ... test_torch_backend.py \|\| true` makes the test script pass whatever those tests do; the PR only says it tolerates skip exit codes, which would cover exit code 5 only, not all failures. |
+| 6 | https://github.com/jaseci-labs/jaseci/pull/2036 | correct | no | Whole `TestCFGBuildPass` class skipped unconditionally ("Skipping CFG build pass tests" restates the action); PR is a parser refactor and gives no reason. |
+| 7 | https://github.com/mochilang/mochi/pull/16528 | false-alarm | - | New interactive script (uses `input()`), no tests; `sys.exit` only inside `main()` under `__main__`, so it cannot end a pytest session. |
+| 8 | https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3851 | correct | no | Unconditional xfail on `test_docs_authenticated`; "unstable in CI" flakiness is not tracked in any issue (PR "fix tests" links none). |
+| 9 | https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3851 | correct | no | Unconditional xfail on `test_aiga_service_health` (on top of a conditional importorskip); flakiness claim has no tracked issue. |
+| 10 | https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3851 | correct | no | Unconditional xfail on `test_aiga_workflow_runtime`; "unstable in CI" with no tracked issue. |
+| 11 | https://github.com/AgentOps-AI/agentops/pull/1122 | false-alarm | - | New standalone `.github/scripts` script run with `python`, not pytest. It has no test functions, and its `sys.exit` calls in `main()` report pass or fail; this adds checking, it does not cut any. |
+| 12 | https://github.com/airbytehq/airbyte/pull/66199 | correct | no | Many okta stream tests are skipped unconditionally, and their bodies are cut down to `assert stream is not None`; the CDK 7 API change explains why the tests broke but does not remove the retry or backoff behaviour, which goes untested (borderline). |
+| 13 | https://github.com/FastLED/FastLED/pull/2016 | false-alarm | - | `ci/tests/check_namespace_includes.py` is a standalone lint script (not `test_*`, not imported by tests); `return 1/0` became `sys.exit(1/0)` inside `main()` under `__main__`, with the same exit semantics. |
+| 14 | https://github.com/AgentOps-AI/agentops/pull/826 | correct | no | Newly added `TESTING = "pytest" in sys.modules` makes `configure()` skip API-key UUID validation under pytest, though it previously ran unconditionally. The code accepts more under test, and that branch can no longer be tested. The reason "allow dummy keys in tests" is only a convenience. |
+| 15 | https://github.com/kyryl-opens-ml/no-ocr/pull/8 | correct | yes | Unconditional skip on `test_end2end`; reason names an environment the test cannot run in ("requires external services"); two new unit tests added. |
+| 16 | https://github.com/pavelzbornik/whisperX-FastAPI/pull/230 | correct | no | `--cov-fail-under` lowered 80 -> 70, so CI fails on less; PR gives no reason (a reviewer bot asked for a restore plan). |
+| 17 | https://github.com/reflex-dev/reflex/pull/5555 | false-alarm | - | `reflex/testing.py` is Reflex's own AppHarness test harness; the `PYTEST_CURRENT_TEST` pop is unchanged context, and a harness handling pytest variables is not weakening. |
+| 18 | https://github.com/swingerman/ha-dual-smart-thermostat/pull/433 | false-alarm | - | `assert True` was already there (context line), and the test still checks: schema validation re-raises, and the toggle check was flipped to `assert False` if the toggle is still present. The removed checks cover the advanced toggle, which the PR removes from the schemas on purpose. Even if this were counted as correct, it would be justified. |
+| 19 | https://github.com/mediar-ai/terminator/pull/104 | false-alarm | - | New example script run as `python <script>` by the workflow; `sys.exit` only in `main()` under `__main__` (`asyncio.run(main())`), so it cannot end a pytest session, and nothing existing is weakened. |
+
+**Counts:** correct 12 (justified 2: items 2 and 15), false-alarm 7, unclear 0.

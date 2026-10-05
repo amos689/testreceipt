@@ -154,7 +154,15 @@ def _environment(directory: Path) -> dict[str, str]:
 
 def _run(directory: Path, command: str, timeout: int) -> Run:
     junit = directory.parent / "junit.xml"
-    args = [*split_command(command), f"--junitxml={junit}", "-p", "no:cacheprovider"]
+    # each run gets its own temporary directory: runs must not share pytest's, which may also be
+    # unwritable for the CI user
+    args = [
+        *split_command(command),
+        f"--junitxml={junit}",
+        f"--basetemp={directory.parent / 'basetemp'}",
+        "-p",
+        "no:cacheprovider",
+    ]
     try:
         completed = subprocess.run(
             args,
@@ -226,14 +234,25 @@ def findings(census: Census, static: list[Finding]) -> list[Finding]:
             )
     out += [f for i, f in enumerate(static) if i not in upgraded]
     removed = census.removed()
-    if removed:
+    # removals the static rules already report get the runner's word added, not a second finding
+    static_files = {f"{PurePosixPath(f.path)}::" for f in out if f.rule == "TR110"}
+    for i, f in enumerate(out):
+        if f.rule != "TR110" or f.level != Level.SUSPICIOUS:
+            continue
+        mine = [t for t in removed if t.startswith(f"{PurePosixPath(f.path)}::")]
+        still = [t for t in mine if census.cross and census.cross.results.get(t) == "passed"]
+        if still:
+            note = f"; the runner shows {_names(still)} still passing on the new code"
+            out[i] = Finding(f.rule, f.level, f.path, f.line, f.message + note, f.test)
+    unreported = [t for t in removed if not any(t.startswith(prefix) for prefix in static_files)]
+    if unreported:
         out.append(
             Finding(
                 "TR110",
                 Level.SUSPICIOUS,
                 "(runner)",
                 None,
-                f"{len(removed)} tests no longer run: {_names(removed)}",
+                f"{len(unreported)} tests no longer run: {_names(unreported)}",
             )
         )
     skipped = census.newly_skipped()

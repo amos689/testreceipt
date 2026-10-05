@@ -201,7 +201,8 @@ def compare(old: TestCase, new: TestCase, path: str) -> list[Finding]:
             add(
                 "TR101",
                 Level.CAUGHT,
-                f"its checks were replaced by {_code(example)}, which always holds",
+                f"its {len(old_live)} real checks are gone; only {_code(example)} remains, "
+                "which always holds",
             )
             return findings
         if new.returns_early:

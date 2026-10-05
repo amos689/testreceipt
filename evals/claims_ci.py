@@ -132,6 +132,105 @@ def _fetch_one(github: GitHub, row: dict[str, Any]) -> str:
     return record["status"]
 
 
+PR_FIELDS = """
+pullRequest(number: %d) {
+  headRefOid
+  commits(last: 1) { nodes { commit {
+    status { contexts { context state } }
+    checkSuites(first: 15) { nodes {
+      app { slug }
+      checkRuns(first: 30) { nodes { id databaseId name status conclusion } }
+    } }
+  } } }
+}"""
+
+
+def _graphql_batch(github: GitHub, rows: list[dict[str, Any]]) -> None:
+    parts = []
+    for i, row in enumerate(rows):
+        owner, name = row["repo"].split("/", 1)
+        fields = PR_FIELDS % row["number"]
+        parts.append(
+            f"p{i}: repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) {{{fields}}}"
+        )
+    payload = github.graphql("query {\n" + "\n".join(parts) + "\n}")
+    data = payload.get("data") or {}
+    records: dict[int, dict[str, Any]] = {}
+    failed: dict[str, dict[str, Any]] = {}  # GraphQL node ID -> check, for failed Actions jobs
+    for i, row in enumerate(rows):
+        repo = data.get(f"p{i}") or {}
+        pull = repo.get("pullRequest")
+        record: dict[str, Any]
+        if not pull:
+            record = {"status": "gone"}
+        else:
+            commits = pull["commits"]["nodes"]
+            commit = commits[0]["commit"] if commits else {}
+            checks = []
+            for suite in (commit.get("checkSuites") or {}).get("nodes", []):
+                app = (suite.get("app") or {}).get("slug")
+                for run in suite["checkRuns"]["nodes"]:
+                    check: dict[str, Any] = {
+                        "name": run["name"],
+                        "app": app,
+                        "status": (run["status"] or "").lower(),
+                        "conclusion": (run["conclusion"] or "").lower() or None,
+                        "id": run["databaseId"],
+                    }
+                    # steps of finished Actions jobs, so that passes and failures are judged alike
+                    if app == "github-actions" and check["conclusion"] in {"success", "failure"}:
+                        failed[run["id"]] = check
+                    checks.append(check)
+            status = commit.get("status") or {}
+            record = {
+                "status": "ok",
+                "head": pull["headRefOid"],
+                "checks": checks,
+                "statuses": [
+                    {"context": c["context"], "state": (c["state"] or "").lower()}
+                    for c in status.get("contexts", [])
+                ],
+            }
+        records[row["pr_id"]] = record
+    _steps(github, failed)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    for pr_id, record in records.items():
+        (CACHE / f"{pr_id}.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def _steps(github: GitHub, failed: dict[str, dict[str, Any]]) -> None:
+    """The steps of failed GitHub Actions jobs, read through GraphQL."""
+    ids = list(failed)
+    for start in range(0, len(ids), 20):
+        chunk = ids[start : start + 20]
+        parts = [
+            f"n{i}: node(id: {json.dumps(node)}) {{ ... on CheckRun {{ steps(first: 60) "
+            "{ nodes { name conclusion } } } }"
+            for i, node in enumerate(chunk)
+        ]
+        data = github.graphql("query {\n" + "\n".join(parts) + "\n}").get("data") or {}
+        for i, node in enumerate(chunk):
+            steps = ((data.get(f"n{i}") or {}).get("steps") or {}).get("nodes", [])
+            failed[node]["steps"] = [
+                {"name": s["name"], "conclusion": (s["conclusion"] or "").lower() or None}
+                for s in steps
+            ]
+
+
+def fetch_graphql(batch: int) -> None:
+    github = GitHub()
+    rows = [json.loads(line) for line in SELECTED.read_text(encoding="utf-8").splitlines()]
+    todo = [r for r in rows if not (CACHE / f"{r['pr_id']}.json").exists()]
+    print(f"{len(todo)} of {len(rows)} pull requests to fetch", file=sys.stderr, flush=True)
+    for start in range(0, len(todo), batch):
+        try:
+            _graphql_batch(github, todo[start : start + batch])
+        except RuntimeError as error:
+            print(f"  {error}", file=sys.stderr, flush=True)
+        if (start // batch) % 10 == 0:
+            print(f"  {start + batch}/{len(todo)}", file=sys.stderr, flush=True)
+
+
 def fetch(workers: int) -> None:
     github = GitHub()
     rows = [json.loads(line) for line in SELECTED.read_text(encoding="utf-8").splitlines()]
@@ -155,43 +254,41 @@ def fetch(workers: int) -> None:
 
 
 def classify(record: dict[str, Any]) -> tuple[str, str]:
-    """What CI says about the head commit's tests, and the evidence."""
+    """What CI says about the head commit's tests, and the evidence.
+
+    Evidence is a test-like step of a GitHub Actions job ("Run tests", "pytest"), or, where steps
+    are not known, a test-like job or commit status name. Passes and failures are read the same way.
+    """
     if record["status"] != "ok":
         return "gone", ""
     checks = record["checks"]
     statuses = record["statuses"]
     if not checks and not statuses:
         return "no CI", ""
-    failed_steps = [
-        f"{c['name']} › {s['name']}"
-        for c in checks
-        for s in c.get("steps", [])
-        if s["conclusion"] == "failure" and is_test_step(s["name"])
-    ]
-    if failed_steps:
-        return "test step failed", failed_steps[0]
-    failed_jobs = [
-        c["name"]
-        for c in checks
-        if c["conclusion"] == "failure" and is_test_step(c["name"] or "") and "steps" not in c
-    ] + [
-        s["context"]
+    evidence: list[tuple[str, str]] = []  # (outcome, where)
+    for c in checks:
+        if c.get("steps"):
+            evidence += [
+                (s["conclusion"] or "", f"{c['name']} › {s['name']}")
+                for s in c["steps"]
+                if is_test_step(s["name"] or "")
+            ]
+        elif is_test_step(c["name"] or ""):
+            evidence.append((c["conclusion"] or "", c["name"]))
+    evidence += [
+        ("failure" if s["state"] in {"failure", "error"} else s["state"], s["context"])
         for s in statuses
-        if s["state"] in {"failure", "error"} and is_test_step(s["context"] or "")
+        if is_test_step(s["context"] or "")
     ]
-    if failed_jobs:
-        return "test job failed", failed_jobs[0]
-    test_checks = [c for c in checks if is_test_step(c["name"] or "")] + [
-        s for s in statuses if is_test_step(s["context"] or "")
-    ]
-    if not test_checks:
-        others = [c for c in checks if c["conclusion"] == "failure"]
-        return ("other failure" if others else "no test CI"), (others[0]["name"] if others else "")
-    # consistent only when some test check actually ran and succeeded
-    succeeded = [
-        c for c in test_checks if c.get("conclusion") == "success" or c.get("state") == "success"
-    ]
-    return ("consistent", "") if succeeded else ("no result", "")
+    failed = [where for outcome, where in evidence if outcome == "failure"]
+    if failed:
+        return "tests failed", failed[0]
+    if any(outcome == "success" for outcome, _ in evidence):
+        return "consistent", ""
+    if evidence:
+        return "no result", ""
+    others = [c for c in checks if c["conclusion"] == "failure"]
+    return ("other failure" if others else "no test CI"), (others[0]["name"] if others else "")
 
 
 def report() -> str:
@@ -204,7 +301,7 @@ def report() -> str:
             continue
         outcome, evidence = classify(json.loads(target.read_text(encoding="utf-8")))
         table[(row["agent"], row["claim"])][outcome] += 1
-        if outcome in {"test step failed", "test job failed"}:
+        if outcome == "tests failed":
             cases.append({**row, "outcome": outcome, "evidence": evidence})
     lines = [
         "| Agent | Claim | Sampled | Undecided | Consistent | Tests failed in CI"
@@ -214,7 +311,7 @@ def report() -> str:
     for (agent, claim), c in sorted(table.items()):
         n = sum(c.values())
         undecided = c["no CI"] + c["no result"] + c["no test CI"] + c["gone"] + c["other failure"]
-        failed = c["test step failed"] + c["test job failed"]
+        failed = c["tests failed"]
         decided = failed + c["consistent"]
         share = f"{100 * failed / decided:.1f}%" if decided else "–"
         lines.append(
@@ -228,7 +325,8 @@ def report() -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["select", "fetch", "report"])
+    parser.add_argument("command", choices=["select", "fetch", "fetch-graphql", "report"])
+    parser.add_argument("--batch", type=int, default=10)
     parser.add_argument("--per-agent", type=int, default=600)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=4)
@@ -237,6 +335,8 @@ def main() -> None:
         select(args.per_agent, args.seed)
     elif args.command == "fetch":
         fetch(args.workers)
+    elif args.command == "fetch-graphql":
+        fetch_graphql(args.batch)
     else:
         text = report()
         (RESULTS / "claims-ci.md").write_text(text, encoding="utf-8")
