@@ -344,13 +344,17 @@ def changes(row: dict[str, Any], record: dict[str, Any]) -> tuple[list[FileChang
     return out, missing
 
 
-def run() -> None:
+def run(out_name: str = "aidev.jsonl", exclude: str | None = None) -> None:
+    """Runs the rules on every fetched pull request, except those listed in `exclude`."""
     RESULTS.mkdir(exist_ok=True)
+    skip = set()
+    if exclude:
+        skip = {int(line) for line in Path(exclude).read_text().split()}
     counts: Counter[str] = Counter()
-    with (RESULTS / "aidev.jsonl").open("w", encoding="utf-8") as out:
+    with (RESULTS / out_name).open("w", encoding="utf-8") as out:
         for row in selected():
             target = CACHE / f"{row['pr_id']}.json"
-            if not target.exists():
+            if row["pr_id"] in skip or not target.exists():
                 continue
             record = json.loads(target.read_text(encoding="utf-8"))
             if record["status"] != "ok":
@@ -442,13 +446,15 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--per-level", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--out", default="aidev.jsonl")
+    parser.add_argument("--exclude", help="a file of pull request IDs to leave out")
     args = parser.parse_args()
     if args.command == "select":
         select()
     elif args.command == "fetch":
         fetch(args.limit, args.workers)
     elif args.command == "run":
-        run()
+        run(args.out, args.exclude)
     else:
         sample(args.per_level, args.seed)
 
