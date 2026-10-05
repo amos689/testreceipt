@@ -211,7 +211,9 @@ def _raw(repo: str, sha: str, path: str) -> str | None:
                 missing.parent.mkdir(parents=True, exist_ok=True)
                 missing.write_bytes(b"")
                 return None
-            time.sleep(2**attempt)
+            retry = error.headers.get("Retry-After") if error.headers else None
+            print(f"  raw {error.code} for {repo}@{sha[:8]}", file=sys.stderr, flush=True)
+            time.sleep(float(retry) if retry else 2**attempt)
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             time.sleep(2**attempt)
     return None
@@ -276,7 +278,7 @@ def fetch(limit: int | None, workers: int) -> None:
             except RuntimeError as error:
                 outcomes["failed"] += 1
                 print(f"  {error}", file=sys.stderr)
-            if i % 200 == 0:
+            if i % 50 == 0:
                 print(
                     f"  {i}/{len(todo)} {dict(outcomes)} api left {github.remaining}",
                     file=sys.stderr,
@@ -376,7 +378,15 @@ def sample(per_level: int, seed: int) -> None:
     rng = random.Random(seed)
     sheet = []
     for level in ("caught", "suspicious"):
-        items = [(r, f) for r in results for f in r["findings"] if f["level"] == level]
+        # one item per pull request, rule and file: repeats of a rule in a file are one judgement
+        seen: set[tuple[str, str, str]] = set()
+        items = []
+        for r in results:
+            for f in r["findings"]:
+                key = (r["url"], f["rule"], f["path"])
+                if f["level"] == level and key not in seen:
+                    seen.add(key)
+                    items.append((r, f))
         picked = items if len(items) <= per_level else rng.sample(items, per_level)
         for r, f in picked:
             line = f"#L{f['line']}" if f["line"] else ""

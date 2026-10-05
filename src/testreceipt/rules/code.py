@@ -14,7 +14,14 @@ from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from ..changes import FileChange, is_conftest, is_production_python, is_python, is_test_file
+from ..changes import (
+    FileChange,
+    is_conftest,
+    is_production_python,
+    is_python,
+    is_test_file,
+    is_test_support,
+)
 from ..model import Finding, Level
 from ..pytests import dotted, parse
 
@@ -57,18 +64,19 @@ class _Device:
 def check_code(changes: list[FileChange]) -> list[Finding]:
     findings: list[Finding] = []
     for change in changes:
-        if not is_python(change.path) or change.after is None:
+        if not is_python(change.path) or change.after is None or is_test_support(change.path):
             continue
-        testish = is_test_file(change.path) or is_conftest(change.path)
+        conftest = is_conftest(change.path)
+        testish = is_test_file(change.path) or conftest
         production = is_production_python(change.path)
         try:
             new_tree = parse(change.after)
             old_tree = parse(change.before) if change.before is not None else None
         except (SyntaxError, ValueError, RecursionError):
             continue  # test files are reported as unchecked by the test rules
-        old = list(_devices(old_tree, testish, production)) if old_tree else []
+        old = list(_devices(old_tree, testish, production, conftest)) if old_tree else []
         seen = Counter(d.key for d in old)
-        for device in _devices(new_tree, testish, production):
+        for device in _devices(new_tree, testish, production, conftest):
             if seen[device.key] > 0:
                 seen[device.key] -= 1
                 continue
@@ -78,9 +86,11 @@ def check_code(changes: list[FileChange]) -> list[Finding]:
     return findings
 
 
-def _devices(tree: ast.Module, testish: bool, production: bool) -> Iterator[_Device]:
+def _devices(
+    tree: ast.Module, testish: bool, production: bool, conftest: bool = False
+) -> Iterator[_Device]:
     yield from _hooks(tree)
-    yield from _exits(tree, testish, production)
+    yield from _exits(tree, testish, production, conftest)
     if production:
         yield from _production(tree)
 
@@ -215,14 +225,30 @@ def _expected_exits(tree: ast.Module) -> set[int]:
     return lines
 
 
-def _exits(tree: ast.Module, testish: bool, production: bool) -> Iterator[_Device]:
-    expected = _expected_exits(tree)
-    # in test code, exiting with a failure status is a way to test an exit; exiting with success,
-    # at import time or from a hook is a way to end the run before failures are counted
-    early = {node.lineno for node in tree.body if isinstance(node, ast.Expr)}
+def _run_scope(tree: ast.Module, conftest: bool) -> set[int]:
+    """Lines that run as part of a pytest session: hooks, tests, and the import of a test module.
+
+    Scripts that only live under a tests directory (data, examples, CI helpers) are not in scope:
+    their `sys.exit` ends the script, not a test run.
+    """
+    lines: set[int] = set()
+    has_tests = False
     for fn in _functions(tree):
-        if fn.name.startswith("pytest_"):
-            early |= _lines_of(fn)
+        if fn.name.startswith("pytest_") or (conftest and fn.name != "main"):
+            lines |= _lines_of(fn)
+        elif fn.name.startswith("test"):
+            has_tests = True
+            lines |= _lines_of(fn)
+    if has_tests or conftest:
+        lines |= {node.lineno for node in tree.body if isinstance(node, ast.Expr)}
+    return lines
+
+
+def _exits(
+    tree: ast.Module, testish: bool, production: bool, conftest: bool = False
+) -> Iterator[_Device]:
+    expected = _expected_exits(tree)
+    scope = _run_scope(tree, conftest) if testish else set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or node.lineno in expected:
             continue
@@ -230,8 +256,9 @@ def _exits(tree: ast.Module, testish: bool, production: bool) -> Iterator[_Devic
         zero = not node.args or (
             isinstance(node.args[0], ast.Constant) and node.args[0].value in {0, None}
         )
+        in_scope = node.lineno in scope
         if name == "os._exit":
-            if testish:
+            if in_scope:
                 yield _Device(
                     "TR203",
                     Level.CAUGHT,
@@ -247,7 +274,7 @@ def _exits(tree: ast.Module, testish: bool, production: bool) -> Iterator[_Devic
                     "TR203:os._exit",
                     node.lineno,
                 )
-        elif testish and name in {"sys.exit", "exit", "quit"} and (zero or node.lineno in early):
+        elif in_scope and name in {"sys.exit", "exit", "quit"} and zero:
             yield _Device(
                 "TR203",
                 Level.CAUGHT,

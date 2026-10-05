@@ -60,6 +60,17 @@ def is_test_file(path: str) -> bool:
     return any(part in TEST_DIRS for part in p.parts[:-1])
 
 
+def is_test_support(path: str) -> bool:
+    """A module of a test framework or test harness the project ships, such as `pkg/testing.py`,
+    a pytest plugin, or pytest itself: handling the test run is its job."""
+    p = PurePosixPath(path)
+    if p.stem in {"testing", "pytest_plugin", "testutils", "test_utils", "testing_utils"}:
+        return True
+    return p.stem.startswith("pytest_") or any(
+        part == "_pytest" or part.startswith("pytest_") for part in p.parts[:-1]
+    )
+
+
 def is_production_python(path: str) -> bool:
     p = PurePosixPath(path)
     if not is_python(path) or is_test_file(path) or is_conftest(path):

@@ -136,3 +136,19 @@ def test_tooling_is_not_production() -> None:
 def test_help_text_naming_a_test_file_is_fine() -> None:
     after = "def hint():\n    return 'run `python test_video.py` for a full report'\n"
     assert found(change("src/app/hints.py", "", after)) == []
+
+
+def test_scripts_under_tests_may_exit() -> None:
+    script = (
+        "import sys\n\n\ndef main():\n    if missing():\n        sys.exit()\n\n\n"
+        "if __name__ == '__main__':\n    main()\n"
+    )
+    assert found(change("tests/data/tool.py", None, script)) == []
+    assert found(change(".github/scripts/run_examples_integration_test.py", None, script)) == []
+
+
+def test_test_harness_modules_may_detect_pytest() -> None:
+    after = "import os\n\nRUNNING = os.environ.get('PYTEST_CURRENT_TEST')\n"
+    assert found(change("reflex/testing.py", "", after)) == []
+    assert found(change("src/_pytest/tmpdir.py", "", after)) == []
+    assert found(change("src/pytest_timeout.py", "", after)) == []

@@ -1,0 +1,116 @@
+# Adjudication of caught findings on held-out AIDev pull requests (see ADJUDICATION.md).
+# Batch A: the 2,370 pull requests in evals/results/aidev-batch-a.txt, rules v1 (commit ee9a92b).
+# First judge: Claude (this session), reading each file's diff from the PR's files API patch.
+
+[[batch_a_caught]]
+pr = "https://github.com/mochilang/mochi/pull/16503"
+rule = "TR203"
+label = "false-alarm"
+reason = "script copied into tests/github/ as test data; no tests in the file; sys.exit in its main()"
+
+[[batch_a_caught]]
+pr = "https://github.com/jimmc414/onefilellm/pull/50"
+rule = "TR111"
+label = "correct"
+justified = true
+reason = "class of legacy alias tests skipped with 'pending rewrite'; docstring says DISABLED"
+
+[[batch_a_caught]]
+pr = "https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3423"
+rule = "TR111"
+label = "correct"
+justified = false
+reason = "existing test marked xfail with 'manager patch issue'"
+
+[[batch_a_caught]]
+pr = "https://github.com/airbytehq/airbyte/pull/53624"
+rule = "TR111"
+label = "correct"
+justified = false
+reason = "seed test skipped as 'incompatible with CDK 6.x - needs investigation'; PR closed unmerged"
+
+[[batch_a_caught]]
+pr = "https://github.com/openworm/sibernetic/pull/210"
+rule = "TR401"
+label = "correct"
+justified = false
+reason = "'|| true' appended to the engine test run in run_all_tests.sh"
+
+[[batch_a_caught]]
+pr = "https://github.com/jaseci-labs/jaseci/pull/2036"
+rule = "TR111"
+label = "correct"
+justified = false
+reason = "whole TestCFGBuildPass class skipped: 'Skipping CFG build pass tests'"
+
+[[batch_a_caught]]
+pr = "https://github.com/mochilang/mochi/pull/16528"
+rule = "TR203"
+label = "false-alarm"
+reason = "script copied into tests/github/ as test data; sys.exit in an interactive main()"
+
+[[batch_a_caught]]
+pr = "https://github.com/MontrealAI/AGI-Alpha-Agent-v0/pull/3851"
+rule = "TR111"
+label = "correct"
+justified = false
+reason = "three existing tests marked xfail as 'unstable in CI'; no tracking issue"
+
+[[batch_a_caught]]
+pr = "https://github.com/AgentOps-AI/agentops/pull/1122"
+rule = "TR203"
+label = "false-alarm"
+reason = "new CI script .github/scripts/run_examples_integration_test.py; sys.exit in main()"
+
+[[batch_a_caught]]
+pr = "https://github.com/airbytehq/airbyte/pull/66199"
+rule = "TR111"
+label = "correct"
+justified = false
+reason = "10 tests skipped for a CDK upgrade and their assertions replaced by 'assert stream is not None'"
+
+[[batch_a_caught]]
+pr = "https://github.com/FastLED/FastLED/pull/2016"
+rule = "TR203"
+label = "false-alarm"
+reason = "lint script under ci/tests/; sys.exit in main()"
+
+[[batch_a_caught]]
+pr = "https://github.com/AgentOps-AI/agentops/pull/826"
+rule = "TR302"
+label = "correct"
+justified = true
+reason = "config skips API key validation when pytest is loaded ('allow dummy keys in tests')"
+
+[[batch_a_caught]]
+pr = "https://github.com/kyryl-opens-ml/no-ocr/pull/8"
+rule = "TR111"
+label = "correct"
+justified = true
+reason = "end-to-end test skipped because it needs external services"
+
+[[batch_a_caught]]
+pr = "https://github.com/pavelzbornik/whisperX-FastAPI/pull/230"
+rule = "TR404"
+label = "correct"
+justified = false
+reason = "--cov-fail-under lowered from 80 to 70"
+
+[[batch_a_caught]]
+pr = "https://github.com/reflex-dev/reflex/pull/5555"
+rule = "TR302"
+label = "false-alarm"
+reason = "reflex/testing.py is the framework's own test harness (AppHarness); handling PYTEST_CURRENT_TEST is its job"
+
+[[batch_a_caught]]
+pr = "https://github.com/swingerman/ha-dual-smart-thermostat/pull/433"
+rule = "TR101"
+label = "correct"
+justified = true
+reason = "advanced-flow assertions removed with the feature; the test now ends with 'assert True'"
+
+[[batch_a_caught]]
+pr = "https://github.com/mediar-ai/terminator/pull/104"
+rule = "TR203"
+label = "false-alarm"
+reason = "example script examples/website-tests/test_google_search.py run directly; sys.exit from its main()"
