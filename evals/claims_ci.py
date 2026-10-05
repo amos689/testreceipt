@@ -18,7 +18,6 @@ import argparse
 import concurrent.futures
 import json
 import random
-import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -30,26 +29,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from aidev import DATA, RESULTS, GitHub
 
+from testreceipt.ci import is_test_step
 from testreceipt.claims import claims, overall
 
 ROOT = Path(__file__).parent
 CACHE = ROOT / ".cache" / "claims_ci"
 SELECTED = DATA / "claims_selected.jsonl"
-TEST_STEP = re.compile(
-    r"\b(?:tests?|testing|pytest|py\.test|tox|nox|jest|vitest|mocha|unit|integration|e2e|spec)\b",
-    re.IGNORECASE,
-)
-NOT_TESTS = re.compile(
-    r"\b(?:lint(?:s|ing|er)?|format(?:s|ting|ter)?|fmt|style|type ?check(?:s|ing)?|mypy|"
-    r"pyright|eslint|prettier|ruff|flake8|clippy|"
-    r"codeql|security|docs?|deploy|publish|release|label|changelog|codecov|coverage upload|"
-    r"preview|vercel|netlify|cla|dco|commit ?lint|title)\b",
-    re.IGNORECASE,
-)
-
-
-def is_test_step(name: str) -> bool:
-    return bool(TEST_STEP.search(name)) and not NOT_TESTS.search(name)
 
 
 def select(per_agent: int, seed: int) -> None:

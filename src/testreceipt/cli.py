@@ -1,4 +1,4 @@
-"""Command line: `testreceipt check --base main`."""
+"""Command line: `testreceipt check --base main` and `testreceipt claims --pr owner/repo#12`."""
 
 from __future__ import annotations
 
@@ -7,11 +7,14 @@ import json
 import sys
 from collections import Counter
 from collections.abc import Sequence
+from pathlib import Path
 
 from . import __version__, census
 from .changes import GitError, from_git, merge_base, resolve
 from .check import check
+from .ci import GitHubError, fetch_pr, parse_pr, token
 from .model import Level, Report, Unchecked, Verdict
+from .reconcile import reconcile
 from .rules import TITLES
 
 EXIT_ON = {
@@ -19,6 +22,12 @@ EXIT_ON = {
     "suspicious": {Verdict.CAUGHT, Verdict.SUSPICIOUS},
     "never": set(),
 }
+CLAIMS_EXIT_ON = {
+    "contradicted": {"CONTRADICTED"},
+    "scoped": {"CONTRADICTED", "COUNT", "SCOPED"},
+    "never": set(),
+}
+OUTCOMES = ("tests failed", "tests passed", "no test result", "no CI")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -53,6 +62,27 @@ def _parser() -> argparse.ArgumentParser:
         default="caught",
         help="exit with status 1 on this verdict or worse (default: caught)",
     )
+    said = commands.add_parser(
+        "claims", help="check what a pull request says about its tests against its CI"
+    )
+    source = said.add_mutually_exclusive_group(required=True)
+    source.add_argument("--pr", help="owner/repo#123 or the pull request's URL")
+    source.add_argument("--description", type=Path, help="a file with the description to check")
+    said.add_argument(
+        "--outcome",
+        choices=OUTCOMES,
+        help="with --description: what the tests did at the same commit",
+    )
+    said.add_argument(
+        "--suite-total", type=int, help="how many tests the suite has, to settle 'N tests pass'"
+    )
+    said.add_argument("--json", action="store_true", help="print the result as JSON")
+    said.add_argument(
+        "--fail-on",
+        choices=sorted(CLAIMS_EXIT_ON),
+        default="contradicted",
+        help="exit with status 1 on these verdicts (default: contradicted)",
+    )
     return parser
 
 
@@ -82,6 +112,41 @@ def _summary(run: census.Run) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "claims":
+        return _claims(args)
+    return _check(args)
+
+
+def _claims(args: argparse.Namespace) -> int:
+    evidence = ""
+    if args.pr:
+        try:
+            repo, number = parse_pr(args.pr)
+            description, ci = fetch_pr(repo, number, token())
+        except (ValueError, GitHubError) as error:
+            print(f"testreceipt: {error}", file=sys.stderr)
+            return 2
+        outcome, evidence = ci.tests()
+        where = f"{repo}#{number} at {ci.head[:12]}"
+    else:
+        if not args.outcome:
+            print("testreceipt: --description needs --outcome", file=sys.stderr)
+            return 2
+        description = args.description.read_text(encoding="utf-8")
+        outcome, where = args.outcome, str(args.description)
+    result = reconcile(description, outcome, evidence, args.suite_total)
+    if args.json:
+        payload = {"pull_request": where, "tests": outcome, **result.to_dict()}
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"testreceipt {result.verdict}  {where}")
+        print(f"  {result.message}")
+        if result.evidence:
+            print(f"  evidence: {result.evidence}")
+    return 1 if result.verdict in CLAIMS_EXIT_ON[args.fail_on] else 0
+
+
+def _check(args: argparse.Namespace) -> int:
     try:
         head = resolve(args.repo, args.head)
         base = resolve(args.repo, args.base)
