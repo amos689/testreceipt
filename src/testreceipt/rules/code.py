@@ -25,6 +25,24 @@ TEST_PATH = re.compile(r"(?:^|[/\\])(?:tests?|testing)[/\\]|\btest_\w+\.py\b|\bc
 TEST_SWITCH = re.compile(r"(?:^|_)(?:TEST|TESTS|TESTING|UNITTEST|PYTEST)(?:_|$)", re.IGNORECASE)
 PYTEST_ENV = frozenset({"PYTEST_CURRENT_TEST", "PYTEST_VERSION", "PYTEST_XDIST_WORKER"})
 TEST_RUNNERS = frozenset({"pytest", "_pytest", "unittest", "nose", "nose2"})
+PATH_CALLS = frozenset(
+    {
+        "open",
+        "Path",
+        "PurePath",
+        "join",
+        "read_text",
+        "read_bytes",
+        "exists",
+        "isfile",
+        "glob",
+        "listdir",
+        "load",
+        "read_csv",
+        "read_json",
+        "loadtxt",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -273,8 +291,21 @@ def _docstrings(tree: ast.Module) -> set[int]:
     }
 
 
+def _path_args(tree: ast.Module) -> set[int]:
+    """ids of the string constants passed to calls that open or locate files."""
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and (dotted(node.func) or "").rsplit(".", 1)[-1] in PATH_CALLS
+        ):
+            found.update(id(arg) for arg in node.args)
+    return found
+
+
 def _production(tree: ast.Module) -> Iterator[_Device]:
     docstrings = _docstrings(tree)
+    path_args = _path_args(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for item in node.body:
@@ -309,7 +340,7 @@ def _production(tree: ast.Module) -> Iterator[_Device]:
                     f"TR302:{node.value}",
                     node.lineno,
                 )
-            elif TEST_PATH.search(node.value):
+            elif id(node) in path_args and TEST_PATH.search(node.value):
                 yield _Device(
                     "TR303",
                     Level.SUSPICIOUS,

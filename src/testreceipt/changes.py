@@ -23,6 +23,7 @@ NOT_PRODUCTION = frozenset(
         "tools",
         "evals",
         "ci",
+        "dev",
         ".github",
     }
 )

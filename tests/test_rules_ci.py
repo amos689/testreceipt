@@ -171,3 +171,13 @@ def test_makefile_target() -> None:
     before = "test:\n\tpytest -q\n"
     after = "test:\n\t-pytest -q || true\n"
     assert found(change("Makefile", before, after)) == [("TR401", "caught")]
+
+
+def test_new_workflow_is_only_suspicious() -> None:
+    assert found(
+        change(
+            ".github/workflows/shots.yml",
+            None,
+            "jobs:\n  s:\n    steps:\n      - run: pytest || true\n",
+        )
+    ) == [("TR401", "suspicious")]

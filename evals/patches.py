@@ -123,3 +123,38 @@ def apply(files: dict[str, str | None], patch: str) -> dict[str, str | None]:
 
 def touched(patch: str) -> list[tuple[str | None, str | None]]:
     return [(fp.old_path, fp.new_path) for fp in parse(patch)]
+
+
+def hunks_only(patch: str, path: str) -> FilePatch:
+    """A file's hunks as the GitHub API gives them: no `---`/`+++` header, just `@@` hunks."""
+    return parse(f"--- a/{path}\n+++ b/{path}\n{patch}")[0]
+
+
+def reverse(text: str, patch: str, path: str) -> str:
+    """The file before a change, from the file after it and the change's hunks."""
+    fp = hunks_only(patch, path)
+    flipped = FilePatch(path, path)
+    for _start, hunk in fp.hunks:
+        lines = ["-" + h[1:] if h[:1] == "+" else "+" + h[1:] if h[:1] == "-" else h for h in hunk]
+        new_start = _new_start(patch, len(flipped.hunks))
+        flipped.hunks.append((new_start, lines))
+    return _apply_one(text, flipped)
+
+
+def _new_start(patch: str, index: int) -> int:
+    headers = [HUNK.match(line) for line in patch.splitlines() if line.startswith("@@")]
+    match = headers[index]
+    assert match is not None
+    return int(match.group(3))
+
+
+def added_text(patch: str, path: str) -> str:
+    """A new file's text from its hunks."""
+    return _apply_one("", hunks_only(patch, path))
+
+
+def removed_text(patch: str, path: str) -> str:
+    """A deleted file's text from its hunks."""
+    fp = hunks_only(patch, path)
+    lines = [h[1:] for _start, hunk in fp.hunks for h in hunk if h[:1] in {"-", " "}]
+    return "\n".join(lines) + "\n" if lines else ""

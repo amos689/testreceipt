@@ -177,7 +177,9 @@ def compare(old: TestCase, new: TestCase, path: str) -> list[Finding]:
     new_skips = new.skips - old.skips
     if new_skips & {"skip", "xfail"}:
         what = "skipped" if "skip" in new_skips else "marked xfail"
-        add("TR111", Level.CAUGHT, f"the {kind} is now {what} unconditionally")
+        reasons = [r for r in new.skip_reasons if r not in old.skip_reasons]
+        because = f"; reason given: {_code(reasons[0], 90)}" if reasons else "; no reason given"
+        add("TR111", Level.CAUGHT, f"the {kind} is now {what} unconditionally{because}")
         return findings
     if new_skips & {"skipif", "xfail-if"}:
         add("TR111", Level.SUSPICIOUS, f"the {kind} is now skipped under a condition")

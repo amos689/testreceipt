@@ -73,6 +73,7 @@ class TestCase:
     body: str  # the body's source, for recognising a moved or renamed test
     end_line: int = 0
     comments: frozenset[str] = frozenset()  # the comments inside the function
+    skip_reasons: tuple[str, ...] = ()  # what the skip markers and calls say
 
     @property
     def live_checks(self) -> list[Check]:
@@ -526,4 +527,18 @@ def _case(node: FuncDef, node_id: str, inherited: frozenset[str], *, helper: boo
         returns_early=len(reachable) < len(body) and isinstance(body[len(reachable)], ast.Return),
         body="\n".join(ast.unparse(s) for s in body),
         end_line=node.end_lineno or node.lineno,
+        skip_reasons=_skip_reasons(node, body),
     )
+
+
+def _skip_reasons(node: FuncDef, body: list[ast.stmt]) -> tuple[str, ...]:
+    reasons: list[str] = []
+    calls = [d for d in node.decorator_list if isinstance(d, ast.Call) and _skip_kind(d)]
+    calls += [c for c in _walk(body) if isinstance(c, ast.Call) and _call_skip(c)]
+    for call in calls:
+        texts = [k.value for k in call.keywords if k.arg in {"reason", "msg"}] + list(call.args)
+        for text in texts:
+            if isinstance(text, ast.Constant) and isinstance(text.value, str):
+                reasons.append(text.value)
+                break
+    return tuple(reasons)

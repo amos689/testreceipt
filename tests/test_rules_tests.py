@@ -282,3 +282,11 @@ def test_tolerance_set_where_the_default_applied() -> None:
     before = "def test_a():\n    assert np.isclose(a, b, *tol)\n"
     after_ = "def test_a():\n    assert np.isclose(a, b, rtol=0.5)\n"
     assert ("TR106", "suspicious") in found(change(PATH, before, after_))
+
+
+def test_skip_reason_is_reported() -> None:
+    skipped = BEFORE.replace(
+        "def test_add():", "@pytest.mark.skip(reason='needs a server')\ndef test_add():"
+    )
+    findings = report(change(PATH, BEFORE, skipped)).findings
+    assert "needs a server" in findings[0].message

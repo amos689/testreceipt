@@ -131,3 +131,8 @@ def test_docstrings_mentioning_tests_are_fine() -> None:
 def test_tooling_is_not_production() -> None:
     after = "def run():\n    return open('tests/data/a.json')\n"
     assert found(change("evals/run.py", "", after)) == []
+
+
+def test_help_text_naming_a_test_file_is_fine() -> None:
+    after = "def hint():\n    return 'run `python test_video.py` for a full report'\n"
+    assert found(change("src/app/hints.py", "", after)) == []

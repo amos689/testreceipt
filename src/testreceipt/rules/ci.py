@@ -166,6 +166,14 @@ def check_ci(changes: list[FileChange]) -> list[Finding]:
             hits += _workflow_lines(after, added)
         if "pytest-config" in found:
             hits += _pytest_config(change)
+        if change.before is None:
+            # a new workflow or script weakens nothing that ran before; it is still worth a look
+            hits = [
+                (rule, Level.SUSPICIOUS, line, f"{message} (in a new file)")
+                if rule != "TR406"
+                else (rule, level, line, message)
+                for rule, level, line, message in hits
+            ]
         findings += [_finding(change.path, h) for h in hits]
 
     for path in deleted_runners:
