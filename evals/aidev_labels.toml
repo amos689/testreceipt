@@ -114,3 +114,43 @@ pr = "https://github.com/mediar-ai/terminator/pull/104"
 rule = "TR203"
 label = "false-alarm"
 reason = "example script examples/website-tests/test_google_search.py run directly; sys.exit from its main()"
+
+# Batch A caught: the second judge (evals/results/second-judge-batch-a.md) agreed on 18 of 19.
+# Item 18 (ha-dual-smart-thermostat#433): the judge said real checks remain; the AST shows the
+# only real check (`expected in allowed_keys`) was removed and only a pre-existing `assert True`
+# remains, so the label stays `correct` (justified: the feature was removed).
+
+# Suspicious sample, batch A held-out under rules v2 (100 of 265, seed 1): two independent judges
+# (evals/results/judge1-suspicious-a.md, judge2-suspicious-a.md) agreed on 93. Resolutions:
+[[batch_a_suspicious_resolved]]
+item = 27
+label = "false-alarm"
+reason = "the excluded mcp_server tests are all new in this PR and run in their own workflow"
+[[batch_a_suspicious_resolved]]
+item = 28
+label = "false-alarm"
+reason = "expected default changed from [] to non-empty on purpose; the new check is disjoint, not looser"
+[[batch_a_suspicious_resolved]]
+item = 41
+label = "false-alarm"
+reason = "the skip only applies to a tracker case added in the same PR"
+[[batch_a_suspicious_resolved]]
+item = 46
+label = "correct"
+justified = true
+reason = "six tests lost checks (complex-template test 12 -> 8, e.g. user_msg.role == 'user') in a deliberate API redesign"
+[[batch_a_suspicious_resolved]]
+item = 50
+label = "false-alarm"
+reason = "build_user_message checks moved to chat/test_chat_formatter.py"
+[[batch_a_suspicious_resolved]]
+item = 68
+label = "correct"
+justified = true
+reason = "assert_called() checks dropped when the patch moved to an autouse fixture"
+[[batch_a_suspicious_resolved]]
+item = 78
+label = "correct"
+justified = true
+reason = "assert_called_with became assert_any_call because the code now uploads twice"
+# Final: 71 correct, 29 false-alarm, 0 unclear.

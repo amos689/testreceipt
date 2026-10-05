@@ -56,6 +56,7 @@ COUNT = re.compile(
 SECTION = re.compile(r"^\s*#{1,6}\s*(.+?)\s*$")
 TESTING_SECTIONS = re.compile(r"\b(?:testing|tests?|checks?|verification|validation)\b", re.I)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+QUOTED = re.compile(r"\"[^\"\n]{1,80}\"|“[^”\n]{1,80}”|「[^」\n]{1,80}」")
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,8 @@ def claims(text: str) -> list[Claim]:
 
 
 def _claim(line: str, *, testing_section: bool) -> Claim | None:
+    # a quoted phrase ('the "tests pass" claim') is talked about, not claimed
+    line = QUOTED.sub("", line)
     cleared = ZERO_FAILURES.sub("", line)
     command = TEST_COMMAND.search(line)
     tests_mentioned = bool(command) or bool(
