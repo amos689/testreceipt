@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from ..changes import FileChange, is_test_file
 from ..model import Finding, Level, Unchecked
-from ..pytests import Check, TestCase, dotted, parse_module
+from ..pytests import Check, TestCase, default_tolerance, dotted, parse_module
 from . import TITLES
 
 INTEGRATION_PATH = re.compile(
@@ -206,13 +206,25 @@ def compare(old: TestCase, new: TestCase, path: str) -> list[Finding]:
             add("TR101", Level.CAUGHT, f"the {kind} now returns before its {len(old_live)} checks")
             return findings
         if not new.calls_helper:
-            add(
-                "TR101",
-                Level.CAUGHT,
-                f"all {len(old_live)} checks were removed, e.g. {_code(old_live[0].text)}",
-                old_live[0].line,
-            )
+            message = f"all {len(old_live)} checks were removed, e.g. {_code(old_live[0].text)}"
+            # a maintainer who drops a check on purpose tends to say why; that is for a reviewer
+            # to weigh, so the finding stays a question rather than a verdict
+            explained = sorted(new.comments - old.comments)
+            if explained:
+                message += f"; a new comment says: {_code(explained[0], 90)}"
+            level = Level.SUSPICIOUS if explained else Level.CAUGHT
+            add("TR101", level, message, old_live[0].line)
             return findings
+    trivial_before = sum(1 for c in old.checks if c.trivial)
+    trivial_now = [c for c in new.checks if c.trivial]
+    if len(trivial_now) > trivial_before and len(new_live) < len(old_live):
+        always = trivial_now[0]
+        n = len(old_live) - len(new_live)
+        message = (
+            f"{n} of {len(old_live)} checks replaced by {_code(always.text)}, which always holds"
+        )
+        add("TR101", Level.CAUGHT, message, always.line)
+        return findings
     if new.swallowed > old.swallowed:
         add("TR103", Level.CAUGHT, "assertions were put in a try block that swallows failures")
 
@@ -401,8 +413,14 @@ def _loosened(old: TestCase, new: TestCase) -> str | None:
 
     looser_when_larger = {(t.func, t.key): t.larger_is_looser for t in new.tolerances}
     old_groups, new_groups = grouped(old), grouped(new)
+    old_funcs = {t.func for t in old.tolerances}
     for key, new_values in new_groups.items():
-        for before, after in zip(old_groups.get(key, []), new_values, strict=False):
+        old_values = old_groups.get(key, [])
+        default = default_tolerance(*key)
+        if not old_values and key[0] in old_funcs and default is not None:
+            # the same check before, without this option (or with `*args` hiding it)
+            old_values = [default] * len(new_values)
+        for before, after in zip(old_values, new_values, strict=False):
             larger = looser_when_larger[key]
             if (after > before) if larger else (after < before):
                 func, name = key

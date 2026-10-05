@@ -39,6 +39,9 @@ dev = [
     "ruff>=0.16",
     "mypy>=1.15",
 ]
+evals = [
+    "pyarrow>=25.0.1",
+]
 
 [tool.hatch.version]
 path = "src/testreceipt/__init__.py"

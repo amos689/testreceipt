@@ -261,3 +261,24 @@ def test_non_test_files_are_ignored_by_test_rules() -> None:
         )
         == []
     )
+
+
+def test_removal_explained_by_a_comment_is_only_suspicious() -> None:
+    before = "def test_runs():\n    assert next(infer()) is None\n"
+    after_ = (
+        "def test_runs():\n    # a regression test for a crash: consuming the value is enough\n"
+        "    next(infer())\n"
+    )
+    assert found(change(PATH, before, after_)) == [("TR101", "suspicious")]
+
+
+def test_some_checks_replaced_by_always_true() -> None:
+    before = "def test_a():\n    assert f() == 1\n    assert g() == 2\n"
+    after_ = "def test_a():\n    assert f() == 1\n    assert True\n"
+    assert found(change(PATH, before, after_)) == [("TR101", "caught")]
+
+
+def test_tolerance_set_where_the_default_applied() -> None:
+    before = "def test_a():\n    assert np.isclose(a, b, *tol)\n"
+    after_ = "def test_a():\n    assert np.isclose(a, b, rtol=0.5)\n"
+    assert ("TR106", "suspicious") in found(change(PATH, before, after_))

@@ -9,7 +9,10 @@ into a helper is not taken for a check removed.
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
+import warnings
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
@@ -68,6 +71,8 @@ class TestCase:
     swallowed: int  # checks inside try/except blocks that swallow their failure
     returns_early: bool  # an unconditional `return` cuts the body short
     body: str  # the body's source, for recognising a moved or renamed test
+    end_line: int = 0
+    comments: frozenset[str] = frozenset()  # the comments inside the function
 
     @property
     def live_checks(self) -> list[Check]:
@@ -93,9 +98,17 @@ def _last(name: str | None) -> str:
     return name.rsplit(".", 1)[-1] if name else ""
 
 
+def parse(source: str) -> ast.Module:
+    """`ast.parse` without the warnings about the project's own code (invalid escapes and such)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return ast.parse(source)
+
+
 def parse_module(source: str) -> dict[str, TestCase]:
     """The module's tests and assertion helpers by node ID. Raises SyntaxError like `ast.parse`."""
-    tree = ast.parse(source)
+    tree = parse(source)
     module_skips = _skips_of_block(tree.body)
     tests: dict[str, TestCase] = {}
     for node in tree.body:
@@ -106,7 +119,23 @@ def parse_module(source: str) -> dict[str, TestCase]:
                 tests[node.name] = _case(node, node.name, frozenset(), helper=True)
         elif isinstance(node, ast.ClassDef) and _is_test_class(node):
             _collect_class(node, node.name, module_skips, tests)
+    comments = _comments(source)
+    for case in tests.values():
+        case.comments = frozenset(
+            text for line, text in comments.items() if case.line <= line <= case.end_line
+        )
     return tests
+
+
+def _comments(source: str) -> dict[int, str]:
+    found: dict[int, str] = {}
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                found[token.start[0]] = " ".join(token.string.lstrip("#").split())
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass
+    return found
 
 
 def _is_helper(node: FuncDef) -> bool:
@@ -379,6 +408,13 @@ _TOLERANCES: dict[str, list[tuple[str, int | None, float | None, bool]]] = {
 }
 
 
+def default_tolerance(func: str, key: str) -> float | None:
+    for name, _position, default, _looser in _TOLERANCES.get(func, []):
+        if name == key:
+            return default
+    return None
+
+
 def _number(node: ast.expr) -> float | None:
     try:
         value = ast.literal_eval(node)
@@ -489,4 +525,5 @@ def _case(node: FuncDef, node_id: str, inherited: frozenset[str], *, helper: boo
         swallowed=_swallowed(reachable),
         returns_early=len(reachable) < len(body) and isinstance(body[len(reachable)], ast.Return),
         body="\n".join(ast.unparse(s) for s in body),
+        end_line=node.end_lineno or node.lineno,
     )

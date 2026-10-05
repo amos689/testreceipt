@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from ..changes import FileChange, is_conftest, is_production_python, is_python, is_test_file
 from ..model import Finding, Level
-from ..pytests import dotted
+from ..pytests import dotted, parse
 
 REPORT_HOOKS = frozenset(
     {"pytest_runtest_makereport", "pytest_report_teststatus", "pytest_runtest_logreport"}
@@ -44,8 +44,8 @@ def check_code(changes: list[FileChange]) -> list[Finding]:
         testish = is_test_file(change.path) or is_conftest(change.path)
         production = is_production_python(change.path)
         try:
-            new_tree = ast.parse(change.after)
-            old_tree = ast.parse(change.before) if change.before is not None else None
+            new_tree = parse(change.after)
+            old_tree = parse(change.before) if change.before is not None else None
         except (SyntaxError, ValueError, RecursionError):
             continue  # test files are reported as unchecked by the test rules
         old = list(_devices(old_tree, testish, production)) if old_tree else []
