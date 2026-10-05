@@ -36,12 +36,12 @@ ROOT = Path(__file__).parent
 CACHE = ROOT / ".cache" / "claims_ci"
 SELECTED = DATA / "claims_selected.jsonl"
 TEST_STEP = re.compile(
-    r"\b(?:tests?|testing|pytest|py\.test|tox|nox|jest|vitest|mocha|unit|integration|e2e|spec|"
-    r"check(?:s)?)\b",
+    r"\b(?:tests?|testing|pytest|py\.test|tox|nox|jest|vitest|mocha|unit|integration|e2e|spec)\b",
     re.IGNORECASE,
 )
 NOT_TESTS = re.compile(
-    r"\b(?:lint|linting|format|fmt|style|type ?check|mypy|pyright|eslint|prettier|ruff|flake8|"
+    r"\b(?:lint(?:s|ing|er)?|format(?:s|ting|ter)?|fmt|style|type ?check(?:s|ing)?|mypy|"
+    r"pyright|eslint|prettier|ruff|flake8|clippy|"
     r"codeql|security|docs?|deploy|publish|release|label|changelog|codecov|coverage upload|"
     r"preview|vercel|netlify|cla|dco|commit ?lint|title)\b",
     re.IGNORECASE,
@@ -85,6 +85,51 @@ def select(per_agent: int, seed: int) -> None:
         print(f"{key}: {len(pool)} claims, {min(len(pool), per_agent)} sampled", file=sys.stderr)
     rng.shuffle(chosen)
     with SELECTED.open("w", encoding="utf-8") as out:
+        for row in chosen:
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def select_control(per_agent: int, seed: int) -> None:
+    """Appends control groups: descriptions with no test claim, and ones that report failures."""
+    taken = {
+        json.loads(line)["pr_id"] for line in SELECTED.read_text(encoding="utf-8").splitlines()
+    }
+    prs = pq.read_table(
+        DATA / "pull_request.parquet",
+        columns=["id", "number", "agent", "state", "merged_at", "repo_url", "html_url", "body"],
+    ).to_pylist()
+    pools: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for p in prs:
+        if p["id"] in taken:
+            continue
+        found = claims(p["body"] or "")
+        kind = overall(found)
+        if kind not in {"none", "fail"}:
+            continue
+        line = next((c.text for c in found if c.kind == "fail"), "")
+        pools[(p["agent"], kind)].append(
+            {
+                "pr_id": p["id"],
+                "repo": p["repo_url"].removeprefix("https://api.github.com/repos/"),
+                "number": p["number"],
+                "agent": p["agent"],
+                "claim": kind,
+                "claim_line": line,
+                "merged": p["merged_at"] is not None,
+                "state": p["state"],
+                "url": p["html_url"],
+            }
+        )
+    rng = random.Random(seed)
+    chosen = []
+    for key in sorted(pools):
+        pool = pools[key]
+        chosen += pool if len(pool) <= per_agent else rng.sample(pool, per_agent)
+        print(
+            f"{key}: {len(pool)} descriptions, {min(len(pool), per_agent)} sampled", file=sys.stderr
+        )
+    rng.shuffle(chosen)
+    with SELECTED.open("a", encoding="utf-8") as out:
         for row in chosen:
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
 
@@ -325,7 +370,9 @@ def report() -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["select", "fetch", "fetch-graphql", "report"])
+    parser.add_argument(
+        "command", choices=["select", "select-control", "fetch", "fetch-graphql", "report"]
+    )
     parser.add_argument("--batch", type=int, default=10)
     parser.add_argument("--per-agent", type=int, default=600)
     parser.add_argument("--seed", type=int, default=0)
@@ -333,6 +380,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "select":
         select(args.per_agent, args.seed)
+    elif args.command == "select-control":
+        select_control(args.per_agent, args.seed + 1)
     elif args.command == "fetch":
         fetch(args.workers)
     elif args.command == "fetch-graphql":
