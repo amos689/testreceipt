@@ -264,7 +264,17 @@ def _always(fn: ast.FunctionDef | ast.AsyncFunctionDef, value: bool) -> bool:
     )
 
 
+def _docstrings(tree: ast.Module) -> set[int]:
+    """ids of the string constants that are docstrings or other bare string statements."""
+    return {
+        id(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+    }
+
+
 def _production(tree: ast.Module) -> Iterator[_Device]:
+    docstrings = _docstrings(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for item in node.body:
@@ -289,6 +299,8 @@ def _production(tree: ast.Module) -> Iterator[_Device]:
                         item.lineno,
                     )
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if id(node) in docstrings:
+                continue
             if node.value in PYTEST_ENV:
                 yield _Device(
                     "TR302",

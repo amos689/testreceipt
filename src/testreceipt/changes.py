@@ -10,6 +10,22 @@ from pathlib import PurePosixPath
 MAX_BYTES = 2_000_000
 
 TEST_DIRS = frozenset({"test", "tests", "testing"})
+# Top-level directories of tooling and documentation, not of the code under test.
+NOT_PRODUCTION = frozenset(
+    {
+        "docs",
+        "doc",
+        "examples",
+        "example",
+        "benchmarks",
+        "bench",
+        "scripts",
+        "tools",
+        "evals",
+        "ci",
+        ".github",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -50,7 +66,7 @@ def is_production_python(path: str) -> bool:
     if p.name in {"setup.py", "noxfile.py", "conftest.py"}:
         return False
     top = p.parts[0] if len(p.parts) > 1 else ""
-    return top not in {"docs", "doc", "examples", "example", "benchmarks", "scripts", ".github"}
+    return top not in NOT_PRODUCTION
 
 
 class GitError(RuntimeError):

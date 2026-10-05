@@ -121,3 +121,13 @@ def test_os_exit_in_production_code() -> None:
 def test_docs_and_examples_are_not_production() -> None:
     after = "import sys\n\nif 'pytest' in sys.modules:\n    pass\n"
     assert found(change("docs/conf.py", "", after)) == []
+
+
+def test_docstrings_mentioning_tests_are_fine() -> None:
+    after = '"""Writes fixtures into tests/fixtures/ for the test suite."""\n\nX = 1\n'
+    assert found(change("src/app/fixtures.py", "", after)) == []
+
+
+def test_tooling_is_not_production() -> None:
+    after = "def run():\n    return open('tests/data/a.json')\n"
+    assert found(change("evals/run.py", "", after)) == []
