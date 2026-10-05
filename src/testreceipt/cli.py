@@ -76,6 +76,13 @@ def _parser() -> argparse.ArgumentParser:
     said.add_argument(
         "--suite-total", type=int, help="how many tests the suite has, to settle 'N tests pass'"
     )
+    said.add_argument(
+        "--junit",
+        type=Path,
+        action="append",
+        help="JUnit XML from the test run at the same commit: its results decide the outcome "
+        "and its total settles 'N tests pass' (may be given more than once)",
+    )
     said.add_argument("--json", action="store_true", help="print the result as JSON")
     said.add_argument(
         "--fail-on",
@@ -129,12 +136,15 @@ def _claims(args: argparse.Namespace) -> int:
         outcome, evidence = ci.tests()
         where = f"{repo}#{number} at {ci.head[:12]}"
     else:
-        if not args.outcome:
-            print("testreceipt: --description needs --outcome", file=sys.stderr)
+        if not args.outcome and not args.junit:
+            print("testreceipt: --description needs --outcome or --junit", file=sys.stderr)
             return 2
         description = args.description.read_text(encoding="utf-8")
-        outcome, where = args.outcome, str(args.description)
-    result = reconcile(description, outcome, evidence, args.suite_total)
+        outcome, where = args.outcome or "no test result", str(args.description)
+    total = args.suite_total
+    if args.junit:
+        outcome, evidence, total = _from_junit(args.junit, total)
+    result = reconcile(description, outcome, evidence, total)
     if args.json:
         payload = {"pull_request": where, "tests": outcome, **result.to_dict()}
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -144,6 +154,23 @@ def _claims(args: argparse.Namespace) -> int:
         if result.evidence:
             print(f"  evidence: {result.evidence}")
     return 1 if result.verdict in CLAIMS_EXIT_ON[args.fail_on] else 0
+
+
+def _from_junit(paths: list[Path], total: int | None) -> tuple[str, str, int | None]:
+    """The outcome, evidence and test count of a run, from its JUnit XML."""
+    results: dict[str, str] = {}
+    for path in paths:
+        found, _ = census.junit_results(path)
+        results.update({f"{path}:{k}": v for k, v in found.items()})
+    if not results:
+        return "no test result", "", total
+    failed = sorted(k for k, v in results.items() if v in {"failed", "error"})
+    ran = [v for v in results.values() if v != "skipped"]
+    count = total if total is not None else len(ran)
+    if failed:
+        name = failed[0].split(":", 1)[1]
+        return "tests failed", f"{len(failed)} of {len(ran)} tests failed, e.g. {name}", count
+    return "tests passed", f"{len(ran)} tests passed", count
 
 
 def _check(args: argparse.Namespace) -> int:

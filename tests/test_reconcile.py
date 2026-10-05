@@ -46,3 +46,24 @@ def test_suite_total_settles_a_count() -> None:
     result = reconcile("All 38 tests pass.", "tests failed", suite_total=400)
     assert result.verdict == "SCOPED"
     assert "38 of 400" in result.message
+
+
+def test_claims_against_junit(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    from testreceipt.cli import main
+
+    junit = tmp_path / "junit.xml"
+    cases = "".join(f'<testcase classname="tests.test_a" name="test_{i}"/>' for i in range(39))
+    cases += (
+        '<testcase classname="tests.test_a" name="test_bad">'
+        '<failure message="AssertionError"/></testcase>'
+    )
+    junit.write_text(f"<testsuites><testsuite>{cases}</testsuite></testsuites>", encoding="utf-8")
+    description = tmp_path / "pr.md"
+    description.write_text("## Testing\n- All 38 tests pass\n", encoding="utf-8")
+    code = main(["claims", "--description", str(description), "--junit", str(junit)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.startswith("testreceipt SCOPED")
+    assert "38 of 40 tests" in out
+    description.write_text("All tests pass.\n", encoding="utf-8")
+    assert main(["claims", "--description", str(description), "--junit", str(junit)]) == 1
