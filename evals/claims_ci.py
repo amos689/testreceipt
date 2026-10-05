@@ -35,6 +35,7 @@ from testreceipt.claims import claims, overall
 ROOT = Path(__file__).parent
 CACHE = ROOT / ".cache" / "claims_ci"
 SELECTED = DATA / "claims_selected.jsonl"
+CASES = RESULTS / "claims-ci-cases.jsonl"
 
 
 def select(per_agent: int, seed: int) -> None:
@@ -347,7 +348,7 @@ def report() -> str:
         lines.append(
             f"| {agent} | {claim} | {n} | {undecided} | {c['consistent']} | {failed} | {share} |"
         )
-    with (RESULTS / "claims-ci-cases.jsonl").open("w", encoding="utf-8") as out:
+    with CASES.open("w", encoding="utf-8") as out:
         for case in cases:
             out.write(json.dumps(case, ensure_ascii=False) + "\n")
     return "\n".join(lines) + "\n"
