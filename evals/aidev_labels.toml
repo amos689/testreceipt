@@ -191,3 +191,13 @@ reason = "assert_called_with became assert_any_call because the code now uploads
 # replaced by echo), graphrag#1944 (skip says the emulator is missing; CI installs Azurite).
 # False alarm (1 PR): cryodrgn#457 (a new `pytest --collect-only` step; tests still run elsewhere).
 # Precision 8/9.
+
+# M2 at the pull request level (for evaluating whole-description verdicts). The 95 judgements
+# above are about one claim line each; for 41, 45 and 69 the judged line was LiteLLM's ticked
+# "screenshot of my new test" box, but the same descriptions also tick "My PR passes all unit tests
+# on make test-unit", which case 9 (same template) was resolved as a contradiction. At the pull
+# request level these three are therefore contradictions too.
+[m2_pr_level]
+41 = "contradiction"
+45 = "contradiction"
+69 = "contradiction"

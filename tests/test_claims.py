@@ -85,3 +85,55 @@ def test_work_done_is_not_a_test_run(text: str) -> None:
 
 def test_ticked_box_with_a_pass_verb() -> None:
     assert [c.kind for c in claims("- [x] Existing tests pass")] == ["pass"]
+
+
+@pytest.mark.parametrize(
+    ("text", "scope"),
+    [
+        ("- ✅ All existing tests pass", "full"),
+        ("All tests pass successfully.", "full"),
+        ("- All unit and integration tests pass", "full"),
+        ("- All existing tests pass (252 tests)", "full"),
+        ("npm test       # ✓ All existing tests pass", "full"),
+        ("- All tests passing on Windows", "part"),
+        ("- All 53 permission endpoint tests pass", "part"),
+        ("- All existing WebSocket tests pass (`test/js/web/websocket/`)", "part"),
+        ("- [x] Tests added and passing", "part"),
+        ("- ✅ Tests pass (5/5 for react-monaco-editor, 4/4 for react-docsite-components)", "part"),
+        ("- All embedding-related tests pass (20 tests in `tests/rag/embeddings/`)", "part"),
+        ("All 423 tests pass successfully.", "count"),
+        ("**Test Results**: ✅ 38/38 tests passing", "count"),
+        (
+            "- [x] My PR passes all unit tests on [`make test-unit`](https://docs.example.com/a/b)",
+            "full",
+        ),
+    ],
+)
+def test_scope(text: str, scope: str) -> None:
+    found = [c for c in claims(text) if c.kind == "pass"]
+    assert [c.scope for c in found] == [scope]
+
+
+def test_scope_from_the_list_below() -> None:
+    body = "✅ **All tests pass**:\n- `bun test test/js/server.spec.ts` - 38 pass\n"
+    assert claims(body)[0].scope == "part"
+    body = "All tests pass successfully:\n- ✅ Password updates via settings API\n"
+    assert claims(body)[0].scope == "full"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "This PR should not be merged until:\n- Seed tests pass\n",
+        "> - fix issues and make all tests passed",
+        "- Optimized through 5 iterations (8-15% pass rate with GPT-4o-mini)",
+        "- [x] Verify existing tests pass",
+        "<issue_description>make all tests pass</issue_description>",
+    ],
+)
+def test_requirements_and_quotes_are_not_claims(text: str) -> None:
+    assert [c for c in claims(text) if c.kind == "pass"] == []
+
+
+def test_short_of_all_reports_a_failure() -> None:
+    assert [c.kind for c in claims("- ✅ 772/773 RSpec tests passing")] == ["fail"]
