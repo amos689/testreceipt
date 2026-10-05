@@ -181,3 +181,13 @@ reason = "assert_called_with became assert_any_call because the code now uploads
 # Per pull request: correct 6 (swarmauri#1450, AGI-Alpha#2489, mlflow#17903, graphiti#997,
 # marin#1474, browser-use#2166); false-alarm 5 (quay#4158, py3plex#90, sibernetic#207,
 # TradingAgents#132, pyvespa#1138). Precision 6/11.
+
+# Batch C caught (rules v4, 275a2ba; 1,895 pull requests, none seen before), first judge Claude,
+# second judge evals/results/second-judge-batch-c.md: correct/false-alarm agreement 11 of 11.
+# Correct (8 PRs): ftw-baselines#185 (conftest hook os._exit(0) on macOS py3.12 masks failures),
+# snntorch#382 (20 assertions replaced by pytest.xfail), scoringengine#992 (module skip; CI does run
+# Docker), AGI-Alpha#789 (3 tests skipped, 'reload unstable'), pygraphistry#708 (6 tests skipped),
+# mlflow#17454 (call kept, both assertions dropped), arbor#108 (unit and integration CI steps
+# replaced by echo), graphrag#1944 (skip says the emulator is missing; CI installs Azurite).
+# False alarm (1 PR): cryodrgn#457 (a new `pytest --collect-only` step; tests still run elsewhere).
+# Precision 8/9.
