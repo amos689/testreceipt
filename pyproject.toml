@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "testreceipt"
+dynamic = ["version"]
+description = "A receipt that a coding agent's green test run was earned: checks a change for weakened tests and test claims the test runner contradicts."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "testreceipt contributors" }]
+keywords = ["testing", "pytest", "coding-agents", "reward-hacking", "ci", "code-review"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+# No runtime dependencies: the checker runs in CI next to arbitrary projects.
+dependencies = []
+
+[project.scripts]
+testreceipt = "testreceipt.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.16",
+    "mypy>=1.15",
+]
+
+[tool.hatch.version]
+path = "src/testreceipt/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/testreceipt"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/evals/.data", "/evals/.cache", "/.github"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["evals/.data", "evals/.cache", "tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "C4", "PT"]
+# RUF001-003: Chinese claim patterns legitimately use full-width punctuation.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
