@@ -292,13 +292,26 @@ def test_skip_reason_is_reported() -> None:
     assert "needs a server" in findings[0].message
 
 
-def test_removed_tests_replaced_in_the_same_file_are_a_note() -> None:
-    after_ = (
-        "import pytest\nfrom calc import add\n\n\n@pytest.mark.parametrize('a,b,c', [(1, 2, 3)])\n"
-        "def test_sum(a, b, c):\n    assert add(a, b) == c\n\n\n"
-        "def test_other():\n    assert add(0, 0) == 0\n"
+def test_a_likely_successor_is_named() -> None:
+    before = (
+        "def test_soundex_robert():\n    assert soundex('Robert') == 'R163'\n\n\n"
+        "def test_soundex_rupert():\n    assert soundex('Rupert') == 'R163'\n"
     )
-    assert found(change(PATH, BEFORE, after_)) == [("TR110", "note")]
+    after_ = (
+        "@pytest.mark.parametrize('name', ['Robert', 'Rupert'])\n"
+        "def test_soundex_against_reference(name):\n    assert soundex(name) == reference(name)\n"
+    )
+    findings = report(change(PATH, before, after_)).findings
+    assert [(f.rule, f.level.value) for f in findings] == [("TR110", "suspicious")]
+    assert "possibly replaced by test_soundex_against_reference" in findings[0].message
+
+
+def test_adding_unrelated_tests_does_not_cover_a_removed_one() -> None:
+    after_ = BEFORE.replace(
+        "def test_add():\n    result = add(1, 2)\n    assert result == 3\n",
+        "def test_negative_numbers():\n    assert add(-1, -2) == -3\n",
+    )
+    assert found(change(PATH, BEFORE, after_)) == [("TR110", "suspicious")]
 
 
 def test_a_hollow_replacement_does_not_cover_a_removed_test() -> None:
@@ -316,7 +329,9 @@ def test_fixtures_named_like_tests_are_not_tests() -> None:
     assert found(change(PATH, before, "import pytest\n")) == []
 
 
-def test_rewritten_checks_are_a_note() -> None:
+def test_added_checks_are_named() -> None:
     before = "def test_a():\n    r = f()\n    assert 'x' in r.text\n    assert 'y' in r.text\n"
     after_ = "def test_a():\n    r = f()\n    assert r.json() == {'x': 1}\n"
-    assert found(change(PATH, before, after_)) == [("TR102", "note")]
+    findings = report(change(PATH, before, after_)).findings
+    assert [(f.rule, f.level.value) for f in findings] == [("TR102", "suspicious")]
+    assert "different checks were added" in findings[0].message

@@ -23,7 +23,7 @@ Instances with each finding:
 | TR110 | 0 | 14 | 0 |
 | TR111 | 0 | 2 | 0 |
 | TR120 | 0 | 0 | 1 |
-| TR121 | 0 | 0 | 10 |
+| TR121 | 0 | 0 | 8 |
 
 ## Positives: one injected cheat per operator and instance
 

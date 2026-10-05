@@ -28,6 +28,10 @@ SIMILAR_BODY = 0.8
 MAX_FUZZY_PAIRS = 40_000
 # More findings than this from one rule in one file are reported as one finding.
 COLLAPSE_OVER = 5
+# Body similarity at which a new test counts as the successor of a removed one in the same file:
+# lower when the two share a word of their names.
+REPLACED_NAMED = 0.35
+REPLACED_UNNAMED = 0.6
 
 EXACT_CALLS = frozenset(
     {
@@ -269,11 +273,12 @@ def _compare_checks(old: TestCase, new: TestCase, path: str) -> list[Finding]:
         moved_to_helper = new.calls_helper and not old.calls_helper
         # checks removed while different ones were added read as a rewrite, usually for a
         # change of behaviour; a reviewer may still want to look
-        rewritten = bool(added)
-        level = Level.NOTE if moved_to_helper or rewritten else Level.SUSPICIOUS
+        # different checks added alongside suggest a rewrite; that is for the reviewer to judge,
+        # since adding an unrelated check would otherwise excuse removing a failing one
+        level = Level.NOTE if moved_to_helper else Level.SUSPICIOUS
         n = len(old_live) - len(new_live)
         message = f"{n} of {len(old_live)} checks removed, e.g. {_code(unpaired[0].text)}"
-        if rewritten:
+        if added:
             message += f"; {len(added)} different checks were added, e.g. {_code(added[0].text)}"
         findings.append(Finding("TR102", level, path, new.line, message, test=new.id))
     return findings
@@ -431,29 +436,50 @@ def _loosened(old: TestCase, new: TestCase) -> str | None:
 # --- tests without a pair ----------------------------------------------------------------------
 
 
+def _name_words(case: TestCase) -> set[str]:
+    name = case.id.split("::")[-1].lower()
+    return {w for w in re.split(r"[_\W\d]+", name) if len(w) >= 4 and w not in {"test", "tests"}}
+
+
+def _successor(case: TestCase, candidates: list[TestCase]) -> str | None:
+    """A new test in the same file that looks like this one's successor: renamed, merged into a
+    parametrized test, or rewritten."""
+    words = _name_words(case)
+    for other in candidates:
+        # a shared name word alone is weak evidence: fixes add tests named like their neighbours
+        needed = REPLACED_NAMED if words & _name_words(other) else REPLACED_UNNAMED
+        matcher = difflib.SequenceMatcher(None, case.body, other.body, autojunk=False)
+        if matcher.quick_ratio() >= needed and matcher.ratio() >= needed:
+            return other.id
+    return None
+
+
 def _removed(
     before: dict[tuple[str, str], _Located], after: dict[tuple[str, str], _Located]
 ) -> list[Finding]:
-    """Tests without a pair. Where the same file gains at least as many new tests, the file was
-    most likely rewritten (tests renamed, merged or parametrized), which is only a note."""
+    """Tests without a pair. Removed tests that a new test in the same file seems to replace are
+    only a note; the rest are suspicious."""
     by_path: dict[str, list[TestCase]] = {}
     for loc in before.values():
         if not loc.case.helper:
             by_path.setdefault(loc.path, []).append(loc.case)
     # only new tests that check something count: an empty one must not cover for a deleted one
-    new_tests = Counter(
-        loc.path for loc in after.values() if not loc.case.helper and loc.case.live_checks
-    )
+    new_tests: dict[str, list[TestCase]] = {}
+    for loc in after.values():
+        if not loc.case.helper and loc.case.live_checks:
+            new_tests.setdefault(loc.path, []).append(loc.case)
     findings = []
     for path, cases in by_path.items():
+        candidates = new_tests.get(path, [])
         names = ", ".join(c.id for c in cases[:4]) + (", …" if len(cases) > 4 else "")
         n = len(cases)
         message = f"{n} test{'s' if n > 1 else ''} removed: {names}"
-        level = Level.SUSPICIOUS
-        if new_tests[path] >= n:
-            level = Level.NOTE
-            message += f"; {new_tests[path]} new tests were added to the same file"
-        findings.append(Finding("TR110", level, path, None, message))
+        # a likely successor is named for the reviewer; it does not excuse the removal, since
+        # adding a similar test would otherwise cover for deleting a failing one
+        successors = [s for c in cases if (s := _successor(c, candidates))]
+        if successors:
+            message += f"; possibly replaced by {', '.join(sorted(set(successors))[:3])}"
+        findings.append(Finding("TR110", Level.SUSPICIOUS, path, None, message))
     return findings
 
 
