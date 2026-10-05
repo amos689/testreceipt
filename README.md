@@ -1,30 +1,88 @@
 # testreceipt
 
-A receipt that a green test run was earned.
+A receipt for a pull request's tests. When a coding agent writes "all tests pass", testreceipt
+checks that against what the tests did at the same commit. It also checks whether the change itself
+weakened the tests.
 
-Coding agents sometimes make a failing test suite pass by changing the tests rather than the code.
-They may delete or skip the failing test, loosen an assertion, end the test process early, or tell
-CI to ignore the failure. testreceipt checks a change for these moves with fixed rules on the
-syntax tree and the CI configuration. It does not ask a model for its opinion.
+> Status: pre-alpha. The rules are measured on real agent pull requests before a first release.
+> Expect breaking changes.
 
-> Status: pre-alpha. The rules are being measured on real agent pull requests before a first
-> release; expect breaking changes.
+## Why
+
+In 2025, agent pull requests that said "all tests pass" in their description often had failing tests
+in CI at the same commit, and rather more said it about a subset they had picked. We checked 481
+agent PRs from AIDev that made such a claim and had a CI result; two judges reviewed each failing case
+(details: [`evals/results/`](evals/results/)).
+
+| Agent | PRs with a CI result | Said all tests pass, tests failed | Also counting claims about a subset |
+|---|---|---|---|
+| Claude Code | 178 | 11.2% | 20.8% |
+| Copilot | 212 | 7.1% | 10.8% |
+| Devin | 68 | 4.4% | 13.2% |
+| Codex (lists the commands it ran) | 68 | 0% | 0% |
+
+CI failed about as often on PRs that claimed passing tests (18%) as on PRs that said nothing about
+tests (22%). Codex differs: it lists the commands it ran and says when they failed.
 
 ## Use
 
+**Check what a pull request says against its tests:**
+
 ```bash
-testreceipt check --base main            # the change from main's merge base to HEAD
-testreceipt check --base main --json     # machine-readable report
-testreceipt check --base main --fail-on suspicious
+testreceipt claims --pr owner/repo#123                       # reads its CI through the GitHub API
+testreceipt claims --description pr.md --junit report.xml    # against a test run's JUnit XML
 ```
 
-There are three levels of finding:
+| Verdict | Meaning |
+|---|---|
+| CONTRADICTED | It says the tests pass; the tests failed at the same commit |
+| SCOPED | It says some tests pass (a package, the new tests, one platform); the suite failed |
+| COUNT | It says N tests pass; the tests failed, and N may not be the whole suite (a JUnit total settles it) |
+| UNSTATED | It lists test commands without saying how they went; the tests failed |
+| CONSISTENT, UNVERIFIED, REPORTS FAILURES, NO CLAIM | As named |
 
-- **CAUGHT** needs hard evidence: either a known cheating device, or a change that can only hide failures.
-- **SUSPICIOUS** marks a change of the right shape that a legitimate change of behaviour can also explain.
-- **Notes** never change the verdict.
+On the 95 adjudicated cases from the study, CONTRADICTED is right 41 times out of 44. These cases
+were also used to develop the rules, and a measurement on 2026 pull requests is in progress.
 
-## Rules
+**Check whether the change weakens tests:**
+
+```bash
+testreceipt check --base main                          # fixed rules on the diff
+testreceipt check --base main --run "python -m pytest -q"
+```
+
+`--run` also runs the tests at the base, at the head, and on the head's code with the base's tests.
+A test that the change broke, and that was then skipped or loosened, becomes **caught**. The other
+findings are **suspicious**: changes of the right shape that a deliberate change of behaviour can
+also explain.
+
+On agent PRs no rule saw before, caught findings were right 8 times out of 9. Two rules have caught
+weakening in every batch so far:
+- unconditional skip/xfail of an existing test (17 of 17);
+- a lowered coverage gate.
+
+**In GitHub Actions:**
+
+```yaml
+- run: python -m pytest --junitxml=report.xml
+- uses: amos689/testreceipt@v0   # not published yet
+  if: always()
+  with:
+    junit: report.xml
+```
+
+The action writes the receipt to the job summary and keeps it updated in one comment on the pull
+request.
+
+**In Claude Code:** add a Stop hook. When a turn ends on "tests pass" that the session's own test
+runs contradict, or that no run since the last edit backs, the hook sends the agent back once to run
+them:
+
+```json
+{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "testreceipt hook claude-stop"}]}]}}
+```
+
+## Rules for test changes
 
 | ID | Finding | Level |
 |---|---|---|
@@ -44,9 +102,9 @@ There are three levels of finding:
 | TR203 | test code ends the process before failures are reported | caught (suspicious inside a test function, where pytest reports it as a failure) |
 | TR301 | `__eq__` that always returns True | caught |
 | TR302 | production code checks whether pytest is running | suspicious |
-| TR303 | production code refers to test files | suspicious |
+| TR303 | production code opens test files | suspicious |
 | TR304 | production code branches on a test-mode switch | suspicious |
-| TR401 | `\|\| true` and similar after a test command | caught |
+| TR401 | `\|\| true` and similar after a test command that used to fail the build | caught (a new masked run: suspicious) |
 | TR402 | `continue-on-error` on a test job | caught |
 | TR403 | `--deselect` and `-k "not …"` (caught), `--ignore`, `-m "not …"`, narrower `testpaths` (suspicious) | caught or suspicious |
 | TR404 | coverage threshold lowered | caught |
