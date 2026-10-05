@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import claims_ci
 from aidev import GitHub
 
+from testreceipt.reconcile import reconcile
+
 ROOT = Path(__file__).parent
 DATA = ROOT / ".data" / "fresh"
 CACHE = ROOT / ".cache" / "fresh_ci"
@@ -211,9 +213,97 @@ def select(per_agent: int, seed: int) -> None:
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+OUTCOME = {
+    "tests failed": "tests failed",
+    "consistent": "tests passed",
+    "no result": "no test result",
+    "no test CI": "no test result",
+    "other failure": "no test result",
+    "no CI": "no CI",
+    "gone": "no CI",
+}
+
+
+def verdicts() -> str:
+    """testreceipt's own verdict for each selected pull request, and the rates per agent."""
+    _use_fresh_files()
+    bodies = {r["pr_id"]: r["body"] for r in rows()}
+    selected = [
+        json.loads(line) for line in claims_ci.SELECTED.read_text(encoding="utf-8").splitlines()
+    ]
+    out = []
+    table: dict[tuple[str, str], Counter[str]] = {}
+    for row in selected:
+        target = CACHE / f"{row['pr_id']}.json"
+        if not target.exists():
+            continue
+        found, evidence = claims_ci.classify(json.loads(target.read_text(encoding="utf-8")))
+        result = reconcile(bodies[row["pr_id"]], OUTCOME[found], evidence)
+        group = "control" if row["claim"].startswith("control") else "claims"
+        table.setdefault((row["agent"], group), Counter())[result.verdict] += 1
+        table[(row["agent"], group)]["ci: " + OUTCOME[found]] += 1
+        out.append({**row, "ci": found, "evidence": evidence, **result.to_dict()})
+    with (RESULTS / "fresh-verdicts.jsonl").open("w", encoding="utf-8") as handle:
+        for item in out:
+            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+    lines = [
+        "| Agent | PRs that claim passing tests, with a CI result | CONTRADICTED | SCOPED | COUNT |"
+        " Control: CI tests failed |",
+        "|---|---|---|---|---|---|",
+    ]
+    for agent in AGENTS:
+        c = table.get((agent, "claims"), Counter())
+        decided = c["ci: tests failed"] + c["ci: tests passed"]
+        k = table.get((agent, "control"), Counter())
+        k_decided = k["ci: tests failed"] + k["ci: tests passed"]
+
+        def share(n: int, d: int) -> str:
+            return f"{n} ({100 * n / d:.1f}%)" if d else "–"
+
+        lines.append(
+            f"| {agent} | {decided} | {share(c['CONTRADICTED'], decided)} | "
+            f"{share(c['SCOPED'], decided)} | {share(c['COUNT'], decided)} | "
+            f"{share(k['ci: tests failed'], k_decided)} of {k_decided} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def sheet(seed: int) -> None:
+    """The cases for the judges: every CONTRADICTED (up to 100), 50 SCOPED and 50 COUNT."""
+    items = [
+        json.loads(line)
+        for line in (RESULTS / "fresh-verdicts.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    rng = random.Random(seed)
+    picked = []
+    for verdict, limit in (("CONTRADICTED", 100), ("SCOPED", 50), ("COUNT", 50)):
+        pool = [
+            i for i in items if i["verdict"] == verdict and not i["claim"].startswith("control")
+        ]
+        picked += pool if len(pool) <= limit else rng.sample(pool, limit)
+    lines = ["# Fresh M2 (2026): testreceipt's verdicts for the judges", ""]
+    for n, item in enumerate(picked, 1):
+        claims_text = "\n".join(
+            f"  - [{c['kind']}, {c['scope']}] {c['text'][:200]}" for c in item["claims"][:6]
+        )
+        lines += [
+            f"## {n}. {item['verdict']} — {item['agent']}, merged={item['merged']}",
+            item["url"],
+            f"- testreceipt says: {item['message']}",
+            f"- CI evidence at the head commit: {item['evidence'] or '(none)'}",
+            "- claims it read from the description:",
+            claims_text,
+            "",
+        ]
+    (RESULTS / "sheet-fresh.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"{len(picked)} cases in {RESULTS / 'sheet-fresh.md'}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["collect", "select", "fetch", "report"])
+    parser.add_argument(
+        "command", choices=["collect", "select", "fetch", "report", "verdicts", "sheet"]
+    )
     parser.add_argument("--per-agent", type=int, default=1500)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--agents", nargs="*", help="collect only these agents")
@@ -225,6 +315,12 @@ def main() -> None:
     elif args.command == "fetch":
         _use_fresh_files()
         claims_ci.fetch_graphql(10)
+    elif args.command == "verdicts":
+        text = verdicts()
+        (RESULTS / "fresh-verdicts.md").write_text(text, encoding="utf-8")
+        print(text)
+    elif args.command == "sheet":
+        sheet(args.seed)
     else:
         _use_fresh_files()
         text = claims_ci.report()
