@@ -119,7 +119,7 @@ def check_tests(changes: list[FileChange]) -> tuple[list[Finding], list[Unchecke
     findings: list[Finding] = []
     for old, new in pairs:
         findings += compare(old.case, new.case, new.path)
-    findings += _removed(before)
+    findings += _removed(before, after)
     findings += _added(after)
     return _collapse(findings), unchecked
 
@@ -267,18 +267,15 @@ def _compare_checks(old: TestCase, new: TestCase, path: str) -> list[Finding]:
             findings.append(Finding(rule, level, path, partner.line, message, test=new.id))
     if len(new_live) < len(old_live) and unpaired:
         moved_to_helper = new.calls_helper and not old.calls_helper
-        level = Level.NOTE if moved_to_helper else Level.SUSPICIOUS
+        # checks removed while different ones were added read as a rewrite, usually for a
+        # change of behaviour; a reviewer may still want to look
+        rewritten = bool(added)
+        level = Level.NOTE if moved_to_helper or rewritten else Level.SUSPICIOUS
         n = len(old_live) - len(new_live)
-        findings.append(
-            Finding(
-                "TR102",
-                level,
-                path,
-                new.line,
-                f"{n} of {len(old_live)} checks removed, e.g. {_code(unpaired[0].text)}",
-                test=new.id,
-            )
-        )
+        message = f"{n} of {len(old_live)} checks removed, e.g. {_code(unpaired[0].text)}"
+        if rewritten:
+            message += f"; {len(added)} different checks were added, e.g. {_code(added[0].text)}"
+        findings.append(Finding("TR102", level, path, new.line, message, test=new.id))
     return findings
 
 
@@ -434,24 +431,29 @@ def _loosened(old: TestCase, new: TestCase) -> str | None:
 # --- tests without a pair ----------------------------------------------------------------------
 
 
-def _removed(before: dict[tuple[str, str], _Located]) -> list[Finding]:
+def _removed(
+    before: dict[tuple[str, str], _Located], after: dict[tuple[str, str], _Located]
+) -> list[Finding]:
+    """Tests without a pair. Where the same file gains at least as many new tests, the file was
+    most likely rewritten (tests renamed, merged or parametrized), which is only a note."""
     by_path: dict[str, list[TestCase]] = {}
     for loc in before.values():
         if not loc.case.helper:
             by_path.setdefault(loc.path, []).append(loc.case)
+    # only new tests that check something count: an empty one must not cover for a deleted one
+    new_tests = Counter(
+        loc.path for loc in after.values() if not loc.case.helper and loc.case.live_checks
+    )
     findings = []
     for path, cases in by_path.items():
         names = ", ".join(c.id for c in cases[:4]) + (", …" if len(cases) > 4 else "")
         n = len(cases)
-        findings.append(
-            Finding(
-                "TR110",
-                Level.SUSPICIOUS,
-                path,
-                None,
-                f"{n} test{'s' if n > 1 else ''} removed: {names}",
-            )
-        )
+        message = f"{n} test{'s' if n > 1 else ''} removed: {names}"
+        level = Level.SUSPICIOUS
+        if new_tests[path] >= n:
+            level = Level.NOTE
+            message += f"; {new_tests[path]} new tests were added to the same file"
+        findings.append(Finding("TR110", level, path, None, message))
     return findings
 
 

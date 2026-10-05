@@ -114,7 +114,7 @@ def parse_module(source: str) -> dict[str, TestCase]:
     tests: dict[str, TestCase] = {}
     for node in tree.body:
         if isinstance(node, FuncDef):
-            if node.name.startswith("test"):
+            if node.name.startswith("test") and not _is_fixture(node):
                 tests[node.name] = _case(node, node.name, module_skips, helper=False)
             elif _is_helper(node):
                 tests[node.name] = _case(node, node.name, frozenset(), helper=True)
@@ -139,11 +139,16 @@ def _comments(source: str) -> dict[int, str]:
     return found
 
 
+def _is_fixture(node: FuncDef) -> bool:
+    """A pytest fixture, which pytest does not collect as a test even when named `test_*`."""
+    return any("fixture" in (dotted(_unwrap(d)) or "") for d in node.decorator_list)
+
+
 def _is_helper(node: FuncDef) -> bool:
     if not HELPER_NAME.search(node.name):
         return False
     # fixtures are not helpers, even when named `expected_result`
-    return not any("fixture" in (dotted(_unwrap(d)) or "") for d in node.decorator_list)
+    return not _is_fixture(node)
 
 
 def _is_test_class(node: ast.ClassDef) -> bool:
@@ -159,7 +164,7 @@ def _collect_class(
     for item in node.body:
         if isinstance(item, FuncDef):
             node_id = f"{prefix}::{item.name}"
-            if item.name.startswith("test"):
+            if item.name.startswith("test") and not _is_fixture(item):
                 tests[node_id] = _case(item, node_id, skips, helper=False)
             elif _is_helper(item):
                 tests[node_id] = _case(item, node_id, frozenset(), helper=True)

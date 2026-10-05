@@ -290,3 +290,33 @@ def test_skip_reason_is_reported() -> None:
     )
     findings = report(change(PATH, BEFORE, skipped)).findings
     assert "needs a server" in findings[0].message
+
+
+def test_removed_tests_replaced_in_the_same_file_are_a_note() -> None:
+    after_ = (
+        "import pytest\nfrom calc import add\n\n\n@pytest.mark.parametrize('a,b,c', [(1, 2, 3)])\n"
+        "def test_sum(a, b, c):\n    assert add(a, b) == c\n\n\n"
+        "def test_other():\n    assert add(0, 0) == 0\n"
+    )
+    assert found(change(PATH, BEFORE, after_)) == [("TR110", "note")]
+
+
+def test_a_hollow_replacement_does_not_cover_a_removed_test() -> None:
+    after_ = (
+        "from calc import add\n\n\ndef test_runs():\n    add(1, 2)\n\n\n"
+        "def test_other():\n    assert add(0, 0) == 0\n"
+    )
+    assert ("TR110", "suspicious") in found(change(PATH, BEFORE, after_))
+
+
+def test_fixtures_named_like_tests_are_not_tests() -> None:
+    before = (
+        "import pytest\n\n\n@pytest.fixture\ndef test_data_dir(tmp_path):\n    return tmp_path\n"
+    )
+    assert found(change(PATH, before, "import pytest\n")) == []
+
+
+def test_rewritten_checks_are_a_note() -> None:
+    before = "def test_a():\n    r = f()\n    assert 'x' in r.text\n    assert 'y' in r.text\n"
+    after_ = "def test_a():\n    r = f()\n    assert r.json() == {'x': 1}\n"
+    assert found(change(PATH, before, after_)) == [("TR102", "note")]
