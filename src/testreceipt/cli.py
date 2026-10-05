@@ -130,7 +130,12 @@ def _summary(run: census.Run) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    given = list(sys.argv[1:] if argv is None else argv)
+    if given[:1] == ["hook"]:
+        from .hooks import main as hook_main
+
+        return hook_main(given[1:])
+    args = _parser().parse_args(given)
     if args.command == "claims":
         return _claims(args)
     return _check(args)

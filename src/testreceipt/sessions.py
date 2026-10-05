@@ -114,6 +114,8 @@ def events(path: Path) -> Iterator[tuple[str, Any, int]]:
                     for claim in claims(block.get("text", "")):
                         if claim.kind == "pass" and claim.explicit:
                             yield "claim", claim, index
+                elif record.get("type") == "user" and kind == "text":
+                    yield "prompt", None, index
 
 
 def check_session(path: Path) -> list[Checked]:
@@ -125,7 +127,7 @@ def check_session(path: Path) -> list[Checked]:
             last_run, edited_since = item, False
         elif kind == "edit":
             edited_since = True
-        else:
+        elif kind == "claim":
             claim: Claim = item
             if last_run is None:
                 verdict = "unverified"
@@ -139,3 +141,13 @@ def check_session(path: Path) -> list[Checked]:
                 verdict = "backed"
             checked.append(Checked(claim, verdict, last_run, index))
     return checked
+
+
+def last_turn(path: Path) -> list[Checked]:
+    """The checked claims made since the person's last message."""
+    prompts = [index for kind, _, index in events(path) if kind == "prompt"]
+    since = prompts[-1] if prompts else 0
+    return [c for c in check_session(path) if c.index > since]
+
+
+UNBACKED = frozenset({"contradicted", "stale", "unverified", "count mismatch"})

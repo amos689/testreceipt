@@ -62,3 +62,26 @@ def test_unverified_and_count_mismatch(tmp_path: Path) -> None:
 def test_chained_commands() -> None:
     assert runs_tests("uv sync && uv run pytest -q")
     assert not runs_tests("pip install pytest")
+
+
+def test_stop_hook_blocks_an_unbacked_claim(tmp_path: Path) -> None:
+    from testreceipt.hooks import claude_stop
+
+    path = transcript(
+        tmp_path,
+        [("run", ("pytest", "3 passed in 0.1s")), ("edit", "src/a.py"), ("say", "All tests pass.")],
+    )
+    answer = claude_stop(json.dumps({"transcript_path": str(path)}))
+    assert answer is not None
+    assert json.loads(answer)["decision"] == "block"
+    assert "code changed after the last test run" in json.loads(answer)["reason"]
+    assert claude_stop(json.dumps({"transcript_path": str(path), "stop_hook_active": True})) is None
+
+
+def test_stop_hook_lets_a_backed_claim_through(tmp_path: Path) -> None:
+    from testreceipt.hooks import claude_stop
+
+    path = transcript(
+        tmp_path, [("run", ("pytest", "3 passed in 0.1s")), ("say", "All tests pass.")]
+    )
+    assert claude_stop(json.dumps({"transcript_path": str(path)})) is None
