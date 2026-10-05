@@ -249,6 +249,11 @@ def _exits(
 ) -> Iterator[_Device]:
     expected = _expected_exits(tree)
     scope = _run_scope(tree, conftest) if testish else set()
+    test_lines: set[int] = set()
+    if not conftest:
+        for fn in _functions(tree):
+            if fn.name.startswith("test"):
+                test_lines |= _lines_of(fn)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or node.lineno in expected:
             continue
@@ -275,9 +280,12 @@ def _exits(
                     node.lineno,
                 )
         elif in_scope and name in {"sys.exit", "exit", "quit"} and zero:
+            # inside a test, pytest reports SystemExit as a failure; at import time or from a
+            # hook or conftest it ends the whole run with success
+            level = Level.SUSPICIOUS if node.lineno in test_lines else Level.CAUGHT
             yield _Device(
                 "TR203",
-                Level.CAUGHT,
+                level,
                 f"`{name}` in test code ends the run early",
                 f"TR203:{name}",
                 node.lineno,
@@ -362,7 +370,7 @@ def _production(tree: ast.Module) -> Iterator[_Device]:
             if node.value in PYTEST_ENV:
                 yield _Device(
                     "TR302",
-                    Level.CAUGHT,
+                    Level.SUSPICIOUS,
                     f"production code reads `{node.value}` to tell when tests are running",
                     f"TR302:{node.value}",
                     node.lineno,
@@ -385,7 +393,7 @@ def _production(tree: ast.Module) -> Iterator[_Device]:
             ):
                 yield _Device(
                     "TR302",
-                    Level.CAUGHT,
+                    Level.SUSPICIOUS,
                     f"production code checks whether {left.value} is running",
                     f"TR302:{left.value}",
                     node.lineno,
@@ -395,7 +403,7 @@ def _production(tree: ast.Module) -> Iterator[_Device]:
             if isinstance(first, ast.Constant) and first.value in TEST_RUNNERS:
                 yield _Device(
                     "TR302",
-                    Level.CAUGHT,
+                    Level.SUSPICIOUS,
                     f"production code checks whether {first.value} is loaded",
                     f"TR302:{first.value}",
                     node.lineno,

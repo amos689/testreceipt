@@ -42,7 +42,7 @@ def test_os_exit_in_test_code() -> None:
 def test_sys_exit_success_in_a_test() -> None:
     before = "def test_a():\n    assert f() == 1\n"
     after = "import sys\n\n\ndef test_a():\n    sys.exit(0)\n    assert f() == 1\n"
-    assert ("TR203", "caught") in found(change("tests/test_a.py", before, after))
+    assert ("TR203", "suspicious") in found(change("tests/test_a.py", before, after))
 
 
 def test_expected_exits_are_fine() -> None:
@@ -88,12 +88,12 @@ def test_pytest_detected_in_production_code() -> None:
         "import sys\n\n\ndef total(xs):\n    if 'pytest' in sys.modules:\n"
         "        return 42\n    return sum(xs)\n"
     )
-    assert found(change("src/app/calc.py", before, after)) == [("TR302", "caught")]
+    assert found(change("src/app/calc.py", before, after)) == [("TR302", "suspicious")]
 
 
 def test_pytest_env_in_production_code() -> None:
     after = "import os\n\nFAKE = bool(os.environ.get('PYTEST_CURRENT_TEST'))\n"
-    assert found(change("app/calc.py", "", after)) == [("TR302", "caught")]
+    assert found(change("app/calc.py", "", after)) == [("TR302", "suspicious")]
 
 
 def test_production_reads_test_files() -> None:
@@ -152,3 +152,8 @@ def test_test_harness_modules_may_detect_pytest() -> None:
     assert found(change("reflex/testing.py", "", after)) == []
     assert found(change("src/_pytest/tmpdir.py", "", after)) == []
     assert found(change("src/pytest_timeout.py", "", after)) == []
+
+
+def test_exit_at_import_time_of_a_test_module_is_caught() -> None:
+    after = "import sys\n\nsys.exit(0)\n\n\ndef test_a():\n    assert f() == 1\n"
+    assert ("TR203", "caught") in found(change("tests/test_a.py", None, after))

@@ -335,3 +335,17 @@ def test_added_checks_are_named() -> None:
     findings = report(change(PATH, before, after_)).findings
     assert [(f.rule, f.level.value) for f in findings] == [("TR102", "suspicious")]
     assert "different checks were added" in findings[0].message
+
+
+def test_checks_delegated_to_a_function_of_the_module() -> None:
+    before = (
+        "class TestQueries(unittest.TestCase):\n    def test_a(self):\n"
+        "        self.assertTrue(build() == 'x')\n"
+    )
+    after_ = (
+        "class Queries:\n    def test_a(self):\n        assert build() == 'x'\n\n\n"
+        "class TestQueries(unittest.TestCase):\n    def setUp(self):\n"
+        "        self.queries = Queries()\n\n"
+        "    def test_a(self):\n        self.queries.test_a()\n"
+    )
+    assert ("TR101", "caught") not in found(change(PATH, before, after_))

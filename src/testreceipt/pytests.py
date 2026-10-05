@@ -74,6 +74,7 @@ class TestCase:
     end_line: int = 0
     comments: frozenset[str] = frozenset()  # the comments inside the function
     skip_reasons: tuple[str, ...] = ()  # what the skip markers and calls say
+    called: frozenset[str] = frozenset()  # names of the functions and methods the body calls
 
     @property
     def live_checks(self) -> list[Check]:
@@ -120,6 +121,17 @@ def parse_module(source: str) -> dict[str, TestCase]:
                 tests[node.name] = _case(node, node.name, frozenset(), helper=True)
         elif isinstance(node, ast.ClassDef) and _is_test_class(node):
             _collect_class(node, node.name, module_skips, tests)
+    # a test that calls a function of this module which checks something delegates its checks,
+    # whatever the function is called (`sT(...)`, `self.queries.test_x()`)
+    checkers = {
+        fn.name
+        for fn in ast.walk(tree)
+        if isinstance(fn, FuncDef) and any(not c.trivial for c in _checks(fn.body))
+    }
+    for case in tests.values():
+        # the helper may share the test's name (`self.queries.test_a()` from `test_a`)
+        if not case.calls_helper and case.called & checkers:
+            case.calls_helper = True
     comments = _comments(source)
     for case in tests.values():
         case.comments = frozenset(
@@ -527,6 +539,9 @@ def _case(node: FuncDef, node_id: str, inherited: frozenset[str], *, helper: boo
         tolerances=_tolerances(reachable),
         patches=_patches(node, body),
         calls_helper=_calls_helper(reachable),
+        called=frozenset(
+            _last(dotted(n.func)) for n in _walk(reachable) if isinstance(n, ast.Call)
+        ),
         empty=_is_empty(body),
         swallowed=_swallowed(reachable),
         returns_early=len(reachable) < len(body) and isinstance(body[len(reachable)], ast.Return),

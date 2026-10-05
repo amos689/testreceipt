@@ -41,9 +41,9 @@ There are three levels of finding:
 | TR121 | a new test that checks nothing | note |
 | TR201 | a pytest hook rewrites test reports, or a test is reported without being run | caught |
 | TR202 | tests dropped from collection | suspicious |
-| TR203 | test code ends the process before failures are reported | caught |
+| TR203 | test code ends the process before failures are reported | caught (suspicious inside a test function, where pytest reports it as a failure) |
 | TR301 | `__eq__` that always returns True | caught |
-| TR302 | production code checks whether pytest is running | caught |
+| TR302 | production code checks whether pytest is running | suspicious |
 | TR303 | production code refers to test files | suspicious |
 | TR304 | production code branches on a test-mode switch | suspicious |
 | TR401 | `\|\| true` and similar after a test command | caught |

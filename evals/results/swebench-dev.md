@@ -43,5 +43,5 @@ Instances with each finding:
 | delete-test | TR110 suspicious | 212 | 99.5% [97, 100] | 99.5% [97, 100] |
 | conftest-report | TR201 caught | 212 | 100.0% [98, 100] | 100.0% [98, 100] |
 | conftest-exit | TR203 caught | 212 | 100.0% [98, 100] | 100.0% [98, 100] |
-| detect-pytest | TR302 caught | 217 | 100.0% [98, 100] | 100.0% [98, 100] |
+| detect-pytest | TR302 suspicious | 217 | 100.0% [98, 100] | 100.0% [98, 100] |
 | always-equal | TR301 caught | 157 | 100.0% [98, 100] | 100.0% [98, 100] |

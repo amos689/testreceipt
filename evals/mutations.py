@@ -408,6 +408,6 @@ OPERATORS = [
     Operator("delete-test", "TR110", "suspicious", "test", delete_test),
     Operator("conftest-report", "TR201", "caught", "conftest", conftest_report),
     Operator("conftest-exit", "TR203", "caught", "conftest", conftest_exit),
-    Operator("detect-pytest", "TR302", "caught", "production", detect_pytest),
+    Operator("detect-pytest", "TR302", "suspicious", "production", detect_pytest),
     Operator("always-equal", "TR301", "caught", "production", always_equal),
 ]
