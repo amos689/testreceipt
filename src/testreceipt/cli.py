@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import __version__, census
+from . import __version__, census, receipt
 from .changes import GitError, from_git, merge_base, resolve
 from .check import check
 from .ci import GitHubError, fetch_pr, parse_pr, token
@@ -47,6 +47,7 @@ def _parser() -> argparse.ArgumentParser:
         help="compare with BASE itself, not with its merge base with HEAD",
     )
     run.add_argument("--json", action="store_true", help="print the report as JSON")
+    run.add_argument("--markdown", action="store_true", help="print the receipt as Markdown")
     run.add_argument(
         "--notes", action="store_true", help="also list notes, which never change the verdict"
     )
@@ -84,6 +85,17 @@ def _parser() -> argparse.ArgumentParser:
         "and its total settles 'N tests pass' (may be given more than once)",
     )
     said.add_argument("--json", action="store_true", help="print the result as JSON")
+    said.add_argument("--markdown", action="store_true", help="print the receipt as Markdown")
+    said.add_argument("--out", type=Path, help="also write the Markdown receipt to this file")
+    said.add_argument("--base", help="also check the change from BASE to --head for weakened tests")
+    said.add_argument("--repo", default=".", help="with --base: the git repository (default: .)")
+    said.add_argument("--head", default="HEAD", help="with --base: the commit (default: HEAD)")
+    said.add_argument(
+        "--fail-on-changes",
+        choices=sorted(EXIT_ON),
+        default="caught",
+        help="with --base: exit with status 1 on this change verdict or worse (default: caught)",
+    )
     said.add_argument(
         "--fail-on",
         choices=sorted(CLAIMS_EXIT_ON),
@@ -145,15 +157,38 @@ def _claims(args: argparse.Namespace) -> int:
     if args.junit:
         outcome, evidence, total = _from_junit(args.junit, total)
     result = reconcile(description, outcome, evidence, total)
+    sections = [receipt.claims_section(result, where)]
+    report: Report | None = None
+    if args.base:
+        try:
+            head = resolve(args.repo, args.head)
+            base = merge_base(args.repo, resolve(args.repo, args.base), head)
+            report = check(from_git(args.repo, base, head))
+        except GitError as error:
+            print(f"testreceipt: {error}", file=sys.stderr)
+            return 2
+        sections.append(receipt.check_section(report, base, head))
+    markdown = receipt.receipt(*sections)
+    if args.out:
+        args.out.write_text(markdown, encoding="utf-8")
     if args.json:
         payload = {"pull_request": where, "tests": outcome, **result.to_dict()}
+        if report is not None:
+            payload["changes"] = report.to_dict()
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+    elif args.markdown:
+        print(markdown)
     else:
         print(f"testreceipt {result.verdict}  {where}")
         print(f"  {result.message}")
         if result.evidence:
             print(f"  evidence: {result.evidence}")
-    return 1 if result.verdict in CLAIMS_EXIT_ON[args.fail_on] else 0
+        if report is not None:
+            print(f"  changes: {report.verdict.value}")
+    failed = result.verdict in CLAIMS_EXIT_ON[args.fail_on]
+    if report is not None and report.verdict in EXIT_ON[args.fail_on_changes]:
+        failed = True
+    return 1 if failed else 0
 
 
 def _from_junit(paths: list[Path], total: int | None) -> tuple[str, str, int | None]:
@@ -198,6 +233,9 @@ def _check(args: argparse.Namespace) -> int:
     if args.json:
         payload = {"base": base, "head": head, **report.to_dict(), "runs": runs}
         print(json.dumps(payload, indent=2, ensure_ascii=False))
+    elif args.markdown:
+        section = receipt.check_section(report, base, head, notes=args.notes)
+        print(receipt.receipt(section))
     else:
         print(_text(report, base, head, notes=args.notes))
         for name, summary in runs.items():

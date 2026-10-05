@@ -1,0 +1,104 @@
+name: testreceipt
+description: A receipt for a pull request's tests - does "all tests pass" in its description hold, and did the change weaken tests?
+author: testreceipt contributors
+branding:
+  icon: check-square
+  color: green
+
+inputs:
+  junit:
+    description: >-
+      JUnit XML from the test run at this commit, one or more paths or globs separated by spaces.
+      Its results decide whether the description's "tests pass" holds. Without it, the receipt
+      reads the commit's CI results through the GitHub API, which may not be complete while this
+      workflow is still running.
+    default: ""
+  check-changes:
+    description: >-
+      Also check the change against the base branch for weakened tests ("true" or "false"). Needs the checkout's history (fetch-depth 0).
+    default: "true"
+  fail-on:
+    description: >-
+      Fail the step when the description is contradicted ("contradicted"), also when its claim covers only part of the suite ("scoped"), or never ("never").
+    default: contradicted
+  fail-on-changes:
+    description: >-
+      Fail the step when the change weakens tests with hard evidence ("caught"), also when it looks suspicious ("suspicious"), or never ("never").
+    default: caught
+  comment:
+    description: >-
+      Post the receipt as a pull request comment, updated on each run ("true" or "false"). Needs `pull-requests: write`.
+    default: "true"
+
+outputs:
+  exit-code:
+    description: >-
+      0 nothing to block, 1 a verdict the inputs ask to fail on, 2 the receipt could not be made.
+    value: ${{ steps.receipt.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+    - id: receipt
+      shell: bash
+      env:
+        PYTHONUTF8: "1"
+        GITHUB_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        INPUT_JUNIT: ${{ inputs.junit }}
+        INPUT_CHECK_CHANGES: ${{ inputs.check-changes }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_FAIL_ON_CHANGES: ${{ inputs.fail-on-changes }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+      run: |
+        if [ -z "$PR_NUMBER" ]; then
+          echo "testreceipt: not a pull_request event; nothing to check" >&2
+          echo "exit-code=0" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # The action's own checkout is the whole package: build it from there.
+        run() { uvx --quiet --from "$ACTION_PATH" testreceipt "$@"; }
+        receipt="$RUNNER_TEMP/testreceipt.md"
+        printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-description.md"
+
+        args=(claims --fail-on "$INPUT_FAIL_ON" --out "$receipt")
+        if [ -n "$INPUT_JUNIT" ]; then
+          args+=(--description "$RUNNER_TEMP/pr-description.md")
+          shopt -s nullglob globstar
+          for pattern in $INPUT_JUNIT; do
+            for file in $pattern; do args+=(--junit "$file"); done
+          done
+        else
+          args+=(--pr "$GITHUB_REPOSITORY#$PR_NUMBER")
+        fi
+        if [ "$INPUT_CHECK_CHANGES" = "true" ]; then
+          git fetch --quiet origin "$BASE_REF" || true
+          args+=(--base "origin/$BASE_REF" --fail-on-changes "$INPUT_FAIL_ON_CHANGES")
+        fi
+
+        set +e
+        run "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+        if [ -f "$receipt" ]; then
+          cat "$receipt" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$INPUT_COMMENT" = "true" ]; then
+            marker='<!-- testreceipt -->'
+            body="$marker"$'\n'"$(cat "$receipt")"
+            existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+              --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty" || true)
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null || true
+            else
+              gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null || true
+            fi
+          fi
+        fi
+        exit "$code"
