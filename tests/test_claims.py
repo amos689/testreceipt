@@ -137,3 +137,15 @@ def test_requirements_and_quotes_are_not_claims(text: str) -> None:
 
 def test_short_of_all_reports_a_failure() -> None:
     assert [c.kind for c in claims("- ✅ 772/773 RSpec tests passing")] == ["fail"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- the CI lookups for the 2,353 PRs whose descriptions say tests pass",
+        "Agents that claim all tests pass are often wrong.",
+        "The agent reported the tests passed, but CI disagreed.",
+    ],
+)
+def test_reported_speech_is_not_a_claim(text: str) -> None:
+    assert [c for c in claims(text) if c.kind == "pass"] == []

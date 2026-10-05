@@ -62,7 +62,11 @@ HEDGE = re.compile(
     r"\b(?:should|ensure|make sure|verify that|needs? to|must|will|would|could|might|please|"
     r"expect(?:ed|s)?|hopefully|once|if|todo|in order to|so that|so (?:it|they)|to make|"
     r"(?<!continue )to pass)\b"
-    r"|n't\b|\bnot\b|\bunable\b|\bwithout\b",
+    r"|n't\b|\bnot\b|\bunable\b|\bwithout\b"
+    # reported speech: "descriptions that say tests pass", "the agent claimed all tests passed"
+    r"|\b(?:say|says|said|saying|claim|claims|claimed|claiming|assert|asserts|asserted|"
+    r"report|reports|reported|reporting|stating|states|stated)\s+(?:that\s+)?(?:all\s+)?"
+    r"(?:the\s+)?(?:\w+\s+)?tests?\b",
     re.IGNORECASE,
 )
 UNTICKED = re.compile(r"^\s*(?:[-*+]|\d+\.)\s*\[\s\]")
