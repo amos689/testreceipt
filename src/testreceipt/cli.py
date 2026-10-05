@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from collections.abc import Sequence
 
-from . import __version__
+from . import __version__, census
 from .changes import GitError, from_git, merge_base, resolve
 from .check import check
-from .model import Level, Report, Verdict
+from .model import Level, Report, Unchecked, Verdict
 from .rules import TITLES
 
 EXIT_ON = {
@@ -41,6 +42,12 @@ def _parser() -> argparse.ArgumentParser:
         "--notes", action="store_true", help="also list notes, which never change the verdict"
     )
     run.add_argument(
+        "--run",
+        metavar="COMMAND",
+        help="also run this pytest command at the base, the head, and the head's code with the "
+        "base's tests, and use the results as evidence",
+    )
+    run.add_argument(
         "--fail-on",
         choices=sorted(EXIT_ON),
         default="caught",
@@ -65,6 +72,14 @@ def _text(report: Report, base: str, head: str, *, notes: bool) -> str:
     return "\n".join(lines)
 
 
+def _summary(run: census.Run) -> str:
+    if run.exit_code is None:
+        return f"did not run: {run.error}"
+    counts = Counter(run.results.values())
+    shown = ", ".join(f"{n} {outcome}" for outcome, n in sorted(counts.items()))
+    return f"exit {run.exit_code}: {shown or 'no results'}"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -77,11 +92,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"testreceipt: {error}", file=sys.stderr)
         return 2
     report = check(changes)
+    runs: dict[str, object] = {}
+    if args.run:
+        taken = census.take(args.repo, base, head, changes, args.run)
+        report.findings = census.findings(taken, report.findings)
+        runs = {
+            name: _summary(run)
+            for name, run in (("base", taken.base), ("head", taken.head), ("cross", taken.cross))
+            if run is not None
+        }
+        if taken.base.exit_code is None or taken.head.exit_code is None:
+            report.unchecked.append(Unchecked("(runner)", taken.base.error or taken.head.error))
     if args.json:
-        payload = {"base": base, "head": head, **report.to_dict()}
+        payload = {"base": base, "head": head, **report.to_dict(), "runs": runs}
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(_text(report, base, head, notes=args.notes))
+        for name, summary in runs.items():
+            print(f"  runner {name:<6} {summary}")
     return 1 if report.verdict in EXIT_ON[args.fail_on] else 0
 
 

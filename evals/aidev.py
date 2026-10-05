@@ -372,6 +372,7 @@ def sample(per_level: int, seed: int) -> None:
         json.loads(line)
         for line in (RESULTS / "aidev.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    results = [r for r in results if r["split"] == "heldout"]  # dev findings shaped the rules
     rng = random.Random(seed)
     sheet = []
     for level in ("caught", "suspicious"):
