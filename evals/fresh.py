@@ -110,11 +110,13 @@ def _keep(node: dict[str, Any], agent: str) -> bool:
     return needed is None or needed in (node.get("body") or "").lower()
 
 
-def collect(per_agent: int, seed: int) -> None:
+def collect(per_agent: int, seed: int, agents: list[str] | None = None) -> None:
     github = GitHub()
     DATA.mkdir(parents=True, exist_ok=True)
     days = [START + dt.timedelta(days=i) for i in range((END - START).days + 1)]
     for agent, signature in AGENTS.items():
+        if agents and agent not in agents:
+            continue
         target = DATA / f"{agent}.jsonl"
         seen: set[int] = set()
         counts: Counter[str] = Counter()
@@ -214,9 +216,10 @@ def main() -> None:
     parser.add_argument("command", choices=["collect", "select", "fetch", "report"])
     parser.add_argument("--per-agent", type=int, default=1500)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--agents", nargs="*", help="collect only these agents")
     args = parser.parse_args()
     if args.command == "collect":
-        collect(args.per_agent, args.seed)
+        collect(args.per_agent, args.seed, args.agents)
     elif args.command == "select":
         select(args.per_agent, args.seed)
     elif args.command == "fetch":

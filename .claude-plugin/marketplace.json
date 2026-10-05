@@ -1,0 +1,17 @@
+{
+  "name": "testreceipt",
+  "owner": {
+    "name": "amos689",
+    "url": "https://github.com/amos689"
+  },
+  "description": "testreceipt: check that 'tests pass' is backed by a test run.",
+  "plugins": [
+    {
+      "name": "testreceipt",
+      "source": "./plugins/testreceipt",
+      "description": "Stop a turn that ends on 'tests pass' when the session's own test runs failed, are older than the last edit, or never happened; and report test results with the runner's own summary.",
+      "category": "productivity",
+      "tags": ["testing", "pytest", "ci", "verification"]
+    }
+  ]
+}

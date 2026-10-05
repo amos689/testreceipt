@@ -1,0 +1,12 @@
+{
+  "name": "testreceipt",
+  "description": "A turn that ends on 'tests pass' must be backed by a test run in the session: the Stop hook sends the agent back once when the last run failed, is older than the last code edit, or never happened. Fixed rules, no model.",
+  "author": {
+    "name": "testreceipt contributors",
+    "url": "https://github.com/amos689/testreceipt"
+  },
+  "homepage": "https://github.com/amos689/testreceipt",
+  "repository": "https://github.com/amos689/testreceipt",
+  "license": "MIT",
+  "keywords": ["testing", "pytest", "ci", "verification", "coding-agents", "hooks"]
+}

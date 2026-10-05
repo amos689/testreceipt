@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx --quiet testreceipt hook claude-stop",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
