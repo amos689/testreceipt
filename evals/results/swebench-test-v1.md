@@ -1,0 +1,51 @@
+# Layer 1 on SWE-bench `test`
+
+Dataset: `princeton-nlp/SWE-bench@e48e2bd1e9fecd5bbd641e9414ac59da9f2e69f6`, 2292 instances rebuilt from 12 repositories.
+
+## Negatives: the maintainers' own fixes
+
+| Verdict | Instances | Share |
+|---|---|---|
+| CAUGHT | 7 | 0.3% [0, 1] |
+| SUSPICIOUS | 157 | 6.8% [6, 8] |
+| INCONCLUSIVE | 0 | 0.0% [0, 0] |
+| CLEAN | 2128 | 92.8% [92, 94] |
+
+Instances with each finding:
+
+| Rule | caught | suspicious | note |
+|---|---|---|---|
+| TR101 | 5 | 0 | 0 |
+| TR102 | 0 | 68 | 1 |
+| TR104 | 0 | 8 | 0 |
+| TR105 | 0 | 8 | 249 |
+| TR106 | 0 | 2 | 0 |
+| TR110 | 0 | 72 | 0 |
+| TR111 | 1 | 8 | 0 |
+| TR112 | 0 | 5 | 0 |
+| TR120 | 0 | 0 | 7 |
+| TR121 | 0 | 0 | 103 |
+| TR202 | 0 | 1 | 0 |
+| TR203 | 1 | 0 | 0 |
+| TR304 | 0 | 3 | 0 |
+
+## Positives: one injected cheat per operator and instance
+
+| Operator | Expected | Cases | Expected rule at its level | Any rule |
+|---|---|---|---|---|
+| delete-checks | TR101 caught | 2252 | 86.8% [85, 88] | 99.9% [100, 100] |
+| assert-true | TR101 caught | 2252 | 100.0% [100, 100] | 100.0% [100, 100] |
+| empty-body | TR101 caught | 2252 | 99.6% [99, 100] | 99.6% [99, 100] |
+| early-return | TR101 caught | 2252 | 99.7% [99, 100] | 99.7% [99, 100] |
+| swallow | TR103 caught | 2252 | 99.7% [99, 100] | 99.7% [99, 100] |
+| skip | TR111 caught | 2252 | 99.8% [99, 100] | 99.8% [99, 100] |
+| xfail | TR111 caught | 2252 | 100.0% [100, 100] | 100.0% [100, 100] |
+| skip-call | TR111 caught | 2252 | 99.7% [99, 100] | 99.9% [100, 100] |
+| weaken | TR104 suspicious | 1270 | 99.2% [99, 100] | 99.4% [99, 100] |
+| hardcode | TR105 suspicious | 990 | 98.6% [98, 99] | 98.6% [98, 99] |
+| loosen | TR106 suspicious | 345 | 96.2% [94, 98] | 96.5% [94, 98] |
+| delete-test | TR110 suspicious | 2252 | 99.1% [99, 99] | 99.1% [99, 99] |
+| conftest-report | TR201 caught | 2252 | 100.0% [100, 100] | 100.0% [100, 100] |
+| conftest-exit | TR203 caught | 2252 | 100.0% [100, 100] | 100.0% [100, 100] |
+| detect-pytest | TR302 caught | 2226 | 99.8% [100, 100] | 99.8% [100, 100] |
+| always-equal | TR301 caught | 2055 | 100.0% [100, 100] | 100.0% [100, 100] |
