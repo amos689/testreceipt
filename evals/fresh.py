@@ -128,16 +128,17 @@ def _keep(node: dict[str, Any], agent: str) -> bool:
     return needed is None or needed in (node.get("body") or "").lower()
 
 
-def _sample_day(
-    github: GitHub, base: str, day: dt.date, rng: random.Random
-) -> list[dict[str, Any]]:
-    """Pull requests of one day: all of them on a quiet day, one random four-hour window of a
-    busy one (two pages at most), so that each query spends the search allowance well."""
-    count, found = _pages(github, f"{base} created:{day.isoformat()} sort:created-asc", 2)
-    if count <= 200:
-        return found
-    window = rng.choice(_windows(day))
-    return _pages(github, f"{base} created:{window} sort:created-asc", 2)[1]
+def _sample_window(
+    github: GitHub, base: str, day: dt.date, w: int, busy: bool
+) -> tuple[list[dict[str, Any]], bool]:
+    """Pull requests of the w-th four-hour window of a day (two pages at most), and whether the
+    day is quiet enough to have been taken whole instead."""
+    if not busy:
+        count, found = _pages(github, f"{base} created:{day.isoformat()} sort:created-asc", 2)
+        if count <= 200:
+            return found, True
+    window = _windows(day)[w]
+    return _pages(github, f"{base} created:{window} sort:created-asc", 2)[1], False
 
 
 def collect(
@@ -172,7 +173,8 @@ def collect(
                 row = json.loads(line)
                 seen.add(row["pr_id"])
                 counts[row["population"]] += 1
-        steps = [(day, population) for day in days for population in targets]
+        # a step is a four-hour window of a day; a quiet day is taken whole by its first step
+        steps = [(day, population, w) for day in days for population in targets for w in range(6)]
         random.Random(f"{seed}:{agent}").shuffle(steps)
         state[agent] = (seen, counts, iter(steps))
     active = list(state)
@@ -180,21 +182,26 @@ def collect(
         for agent in list(active):
             seen, counts, steps = state[agent]
             step = None
-            for day, population in steps:
-                key = f"{agent}|{population}|{day.isoformat()}"
-                if counts[population] < targets[population] and key not in done:
-                    step = (day, population, key)
+            for day, population, w in steps:
+                stem = f"{agent}|{population}|{day.isoformat()}"
+                key = f"{stem}|{w}"
+                wanted = counts[population] < targets[population]
+                if wanted and key not in done and f"{stem}|quiet" not in done:
+                    step = (day, population, w, stem)
                     break
             if step is None:
                 active.remove(agent)
                 print(f"{agent}: {dict(counts)}", file=sys.stderr, flush=True)
                 continue
-            day, population, key = step
+            day, population, w, stem = step
             terms = CLAIM_TERMS if population == "claims" else ""
             base = f"is:pr {AGENTS[agent]} {terms}".strip()
-            rng = random.Random(f"{seed}:{key}")
+            busy = f"{stem}|busy" in done
+            found, quiet = _sample_window(github, base, day, w, busy)
+            done.add(f"{stem}|quiet" if quiet else f"{stem}|busy")
+            key = f"{stem}|{w}"
             with (DATA / f"{agent}.jsonl").open("a", encoding="utf-8") as out:
-                for node in _sample_day(github, base, day, rng):
+                for node in found:
                     if node["databaseId"] in seen or not _keep(node, agent):
                         continue
                     seen.add(node["databaseId"])
