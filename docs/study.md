@@ -1,6 +1,6 @@
 # When a coding agent says "all tests pass"
 
-*Draft. The 2026 measurement is in progress; the 2025 results below are final.*
+*Draft, 2026-10-06. Both measurements are complete.*
 
 Coding agents open pull requests with descriptions such as "All existing tests pass" or "✅ 42 tests
 passing". Reviewers read these lines. We checked them against what CI's tests did at the same
@@ -17,7 +17,15 @@ commit.
   failures.
 - **It differs by agent.** Codex lists the commands it ran and says when they fail; none of its 68
   such pull requests with a CI result was contradicted.
-- 〔2026: pending〕
+- **2026 looks different.** In June–September 2026, 644 agent pull requests in such repositories
+  claimed passing tests and have a CI result. Only **2 (0.3%)** were contradicted by failing tests at
+  the same commit.
+  - Mismatches are now mostly claims that say which part of the suite was run, while CI failed
+    elsewhere: 30 cases (4.7%), often in end-to-end suites or in failures the pull request
+    attributes to `main`.
+  - Agents now report the exact commands they ran (`cargo test -p <crate>`, `pytest -k <name>`).
+- **Copilot stopped claiming.** 23% of its 2025 descriptions said tests pass; 1 of 306 in 2026.
+  Cursor, Devin and Codex now do so in about 30% of their pull requests.
 
 ## Data
 
@@ -26,7 +34,19 @@ commit.
   GitHub Copilot, Devin, Cursor, Claude Code and Google Jules.
 - **2026.** Agent pull requests opened from June to September 2026, found through GitHub's search
   by each agent's signature, in repositories with at least 100 stars (`evals/fresh.py`).
-  〔counts pending〕
+  - The signatures: Copilot, Devin and Jules as app authors; Codex's `codex` label; the links
+    Claude Code and Cursor leave in the description.
+  - Searches cover random four-hour windows of random days, paced to the search limit.
+  - The unfiltered sample:
+
+    | Agent | Pull requests |
+    |---|---|
+    | Claude Code | 1,153 |
+    | Devin | 1,117 |
+    | Cursor | 528 |
+    | Copilot | 306 |
+    | Codex | 281 |
+    | Jules | 13 |
 
 ## Method
 
@@ -58,7 +78,13 @@ commit.
    - On those 95 cases, testreceipt's whole-description verdict CONTRADICTED is right 41 times in
      44 and finds 41 of the 45 contradictions.
    - These cases were also used to develop the rules, so this is not a held-out number.
-   - The 2026 cases are held out. 〔pending〕
+   - **On the held-out 2026 cases it fails:** CONTRADICTED was right on 2 of 12 decided cases.
+     - The 2026 descriptions name filtered commands (`mvn test -pl module`, `-k name`), which the
+       scope rules did not read as narrowing the claim.
+     - About one in five failing steps named like test runs failed for other reasons: stubtest,
+       formatting, coverage thresholds, build. With logs available, judges could tell; names alone
+       cannot.
+     - SCOPED was right on 23 of 28 decided cases.
 
 ## Results
 
@@ -85,7 +111,34 @@ CI test failure rate by what the description says (automatic classification, all
 
 ### 2026
 
-〔pending〕
+The unfiltered sample. Every case where a claim met a failing test step was labelled by two judges,
+who agreed on 41 of 43; the judges could read CI logs where they still existed.
+
+| Agent | Claim passing tests | Claimers with a CI result | Contradicted | Part claim, suite failed |
+|---|---|---|---|---|
+| Devin | 32.1% | 290 | 1 | 18 |
+| Claude Code | 22.5% | 189 | 1 | 8 |
+| Cursor | 30.7% | 113 | 0 | 4 |
+| Codex | 29.9% | 51 | 0 | 0 |
+| Copilot | 0.3% | 1 | 0 | 0 |
+| **All** | | **644** | **2 (0.3%, 95% CI 0.1–1.1)** | **30 (4.7%)** |
+
+CI's tests failed on 2.6–11.6% of pull requests whose description said nothing about tests,
+depending on the agent, against 22% in 2025.
+
+### 2025 and 2026 compared
+
+| Agent | Explicit "tests pass" in descriptions, 2025 | 2026 |
+|---|---|---|
+| Copilot | 23.4% | 0.3% |
+| Claude Code | 27.8% | 22.5% |
+| Devin | 10.3% | 32.1% |
+| Cursor | 1.6% | 30.7% |
+| Codex | 0.2% (it listed commands instead) | 29.9% |
+
+The 2025 contradiction rate is an upper bound: logs had expired, and in 2026 about one in five
+failing steps named like test runs had not failed on tests. Even so, whole-suite claims contradicted
+by CI went from about one in eleven to about one in three hundred.
 
 ## Limitations
 

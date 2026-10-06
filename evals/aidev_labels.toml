@@ -201,3 +201,12 @@ reason = "assert_called_with became assert_any_call because the code now uploads
 41 = "contradiction"
 45 = "contradiction"
 69 = "contradiction"
+
+# Fresh 2026 (held out for the claims rules): the 43 CONTRADICTED, SCOPED and COUNT cases in
+# evals/results/sheet-fresh.md, labelled by two independent judges (judge1-fresh.md,
+# judge2-fresh.md), who agreed on 41. Resolutions:
+[fresh_resolved]
+7 = "out-of-scope"   # the full-suite vitest claim is dated to an earlier review round; at head the description lists named suites
+42 = "unclear"       # an e2e claim at an earlier commit; the failing e2e log is private
+# Tool CONTRADICTED (13): 2 contradiction, 8 out-of-scope, 2 not-tests, 1 unclear -> precision 2/12.
+# Tool SCOPED (29): 23 out-of-scope, 5 not-tests, 1 unclear. Tool COUNT (1): out-of-scope.
