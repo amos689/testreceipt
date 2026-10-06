@@ -49,6 +49,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_BODY: ${{ github.event.pull_request.body }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
         INPUT_JUNIT: ${{ inputs.junit }}
         INPUT_CHECK_CHANGES: ${{ inputs.check-changes }}
@@ -69,6 +70,7 @@ runs:
         args=(claims --fail-on "$INPUT_FAIL_ON" --out "$receipt")
         if [ -n "$INPUT_JUNIT" ]; then
           args+=(--description "$RUNNER_TEMP/pr-description.md")
+          args+=(--label "$GITHUB_REPOSITORY#$PR_NUMBER at ${HEAD_SHA:0:12}")
           shopt -s nullglob globstar
           for pattern in $INPUT_JUNIT; do
             for file in $pattern; do args+=(--junit "$file"); done

@@ -87,6 +87,7 @@ def _parser() -> argparse.ArgumentParser:
     said.add_argument("--json", action="store_true", help="print the result as JSON")
     said.add_argument("--markdown", action="store_true", help="print the receipt as Markdown")
     said.add_argument("--out", type=Path, help="also write the Markdown receipt to this file")
+    said.add_argument("--label", help="with --description: how the receipt names the pull request")
     said.add_argument("--base", help="also check the change from BASE to --head for weakened tests")
     said.add_argument("--repo", default=".", help="with --base: the git repository (default: .)")
     said.add_argument("--head", default="HEAD", help="with --base: the commit (default: HEAD)")
@@ -157,7 +158,8 @@ def _claims(args: argparse.Namespace) -> int:
             print("testreceipt: --description needs --outcome or --junit", file=sys.stderr)
             return 2
         description = args.description.read_text(encoding="utf-8")
-        outcome, where = args.outcome or "no test result", str(args.description)
+        outcome = args.outcome or "no test result"
+        where = args.label or str(args.description)
     total = args.suite_total
     if args.junit:
         outcome, evidence, total = _from_junit(args.junit, total)
