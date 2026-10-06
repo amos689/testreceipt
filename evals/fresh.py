@@ -1,6 +1,6 @@
 """M2 on 2026 pull requests: agent pull requests that say their tests pass, against their CI.
 
-    uv run --group evals python evals/fresh.py collect [--per-agent 1500]
+    uv run --group evals python evals/fresh.py collect [--per-agent 400]
     uv run --group evals python evals/fresh.py select [--per-agent 600]
     uv run --group evals python evals/fresh.py fetch
     uv run --group evals python evals/fresh.py report
@@ -64,9 +64,18 @@ SEARCH = """query($q: String!, $after: String) {
 }"""
 
 
+# GitHub's search allows about 30 queries a minute across REST and GraphQL; more gets 403s
+PACE = 2.5
+_last_search = [0.0]
+
+
 def _search(github: GitHub, query: str, after: str | None) -> dict[str, Any]:
     body = json.dumps({"query": SEARCH, "variables": {"q": query, "after": after}}).encode()
-    for attempt in range(6):
+    for attempt in range(8):
+        wait = _last_search[0] + PACE - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _last_search[0] = time.time()
         request = urllib.request.Request(
             "https://api.github.com/graphql", data=body, headers=github._headers, method="POST"
         )
@@ -76,10 +85,14 @@ def _search(github: GitHub, query: str, after: str | None) -> dict[str, Any]:
             if payload.get("errors") and not payload.get("data"):
                 raise RuntimeError(str(payload["errors"])[:200])
             return payload["data"]["search"]  # type: ignore[no-any-return]
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, RuntimeError) as error:
-            wait = 60 * (attempt + 1)
-            print(f"  search retry in {wait}s: {error}", file=sys.stderr, flush=True)
-            time.sleep(wait)
+        except urllib.error.HTTPError as error:
+            retry = error.headers.get("Retry-After") if error.headers else None
+            pause = float(retry) if retry else 60.0 * (attempt + 1)
+            print(f"  search {error.code}, waiting {pause:.0f}s", file=sys.stderr, flush=True)
+            time.sleep(pause)
+        except (urllib.error.URLError, TimeoutError, RuntimeError) as error:
+            print(f"  search error, retrying: {error}", file=sys.stderr, flush=True)
+            time.sleep(30.0 * (attempt + 1))
     raise RuntimeError(f"search failed: {query}")
 
 
@@ -88,16 +101,19 @@ def _windows(day: dt.date) -> list[str]:
     return [f"{stamp}T{h:02d}:00:00Z..{stamp}T{h + 3:02d}:59:59Z" for h in range(0, 24, 4)]
 
 
-def _collect_window(github: GitHub, query: str) -> list[dict[str, Any]]:
+def _pages(github: GitHub, query: str, pages: int) -> tuple[int, list[dict[str, Any]]]:
+    """The query's total count and the pull requests on its first pages."""
     found: list[dict[str, Any]] = []
     after = None
-    for _ in range(10):  # the search returns at most 1,000 results
+    count = 0
+    for _ in range(pages):
         result = _search(github, query, after)
+        count = result["issueCount"]
         found += [n for n in result["nodes"] if n]
         if not result["pageInfo"]["hasNextPage"]:
             break
         after = result["pageInfo"]["endCursor"]
-    return found
+    return count, found
 
 
 # text the description must contain for agents found through it, since search matches loosely
@@ -112,11 +128,30 @@ def _keep(node: dict[str, Any], agent: str) -> bool:
     return needed is None or needed in (node.get("body") or "").lower()
 
 
+def _sample_day(
+    github: GitHub, base: str, day: dt.date, rng: random.Random
+) -> list[dict[str, Any]]:
+    """Pull requests of one day: all of them on a quiet day, one random four-hour window of a
+    busy one (two pages at most), so that each query spends the search allowance well."""
+    count, found = _pages(github, f"{base} created:{day.isoformat()} sort:created-asc", 2)
+    if count <= 200:
+        return found
+    window = rng.choice(_windows(day))
+    return _pages(github, f"{base} created:{window} sort:created-asc", 2)[1]
+
+
 def collect(per_agent: int, seed: int, agents: list[str] | None = None) -> None:
+    """Samples days for every agent in turn, until each has `per_agent` pull requests that mention
+    tests passing and half as many unfiltered ones. Finished days are remembered in
+    `progress.json`, so a stopped run picks up where it left off."""
     github = GitHub()
     DATA.mkdir(parents=True, exist_ok=True)
+    progress_path = DATA / "progress.json"
+    done: set[str] = set(json.loads(progress_path.read_text())) if progress_path.exists() else set()
     days = [START + dt.timedelta(days=i) for i in range((END - START).days + 1)]
-    for agent, signature in AGENTS.items():
+    targets = {"claims": per_agent, "control": per_agent // 2}
+    state = {}
+    for agent in AGENTS:
         if agents and agent not in agents:
             continue
         target = DATA / f"{agent}.jsonl"
@@ -127,32 +162,37 @@ def collect(per_agent: int, seed: int, agents: list[str] | None = None) -> None:
                 row = json.loads(line)
                 seen.add(row["pr_id"])
                 counts[row["population"]] += 1
-        order = list(days)
-        random.Random(f"{seed}:{agent}").shuffle(order)
-        with target.open("a", encoding="utf-8") as out:
-            for day in order:
-                if counts["claims"] >= per_agent and counts["control"] >= per_agent // 2:
+        steps = [(day, population) for day in days for population in targets]
+        random.Random(f"{seed}:{agent}").shuffle(steps)
+        state[agent] = (seen, counts, iter(steps))
+    active = list(state)
+    while active:
+        for agent in list(active):
+            seen, counts, steps = state[agent]
+            step = None
+            for day, population in steps:
+                key = f"{agent}|{population}|{day.isoformat()}"
+                if counts[population] < targets[population] and key not in done:
+                    step = (day, population, key)
                     break
-                for population, terms in (("claims", CLAIM_TERMS), ("control", "")):
-                    if population == "claims" and counts["claims"] >= per_agent:
+            if step is None:
+                active.remove(agent)
+                print(f"{agent}: {dict(counts)}", file=sys.stderr, flush=True)
+                continue
+            day, population, key = step
+            terms = CLAIM_TERMS if population == "claims" else ""
+            base = f"is:pr {AGENTS[agent]} {terms}".strip()
+            rng = random.Random(f"{seed}:{key}")
+            with (DATA / f"{agent}.jsonl").open("a", encoding="utf-8") as out:
+                for node in _sample_day(github, base, day, rng):
+                    if node["databaseId"] in seen or not _keep(node, agent):
                         continue
-                    if population == "control" and counts["control"] >= per_agent // 2:
-                        continue
-                    base = f"is:pr {signature} {terms}".strip()
-                    probe = _search(github, f"{base} created:{day.isoformat()}", None)
-                    windows = _windows(day) if probe["issueCount"] > 1000 else [day.isoformat()]
-                    # the control takes one window a day, to spread it over more days
-                    if population == "control":
-                        windows = [random.Random(f"{seed}:{agent}:{day}").choice(windows)]
-                    for window in windows:
-                        for node in _collect_window(github, f"{base} created:{window}"):
-                            if node["databaseId"] in seen or not _keep(node, agent):
-                                continue
-                            seen.add(node["databaseId"])
-                            counts[population] += 1
-                            out.write(json.dumps(_row(node, agent, population)) + "\n")
-                print(f"  {agent} {day} {dict(counts)}", file=sys.stderr, flush=True)
-        print(f"{agent}: {dict(counts)}", file=sys.stderr, flush=True)
+                    seen.add(node["databaseId"])
+                    counts[population] += 1
+                    out.write(json.dumps(_row(node, agent, population)) + "\n")
+            done.add(key)
+            progress_path.write_text(json.dumps(sorted(done)))
+            print(f"  {agent} {population} {day} {dict(counts)}", file=sys.stderr, flush=True)
 
 
 def _row(node: dict[str, Any], agent: str, population: str) -> dict[str, Any]:
@@ -304,7 +344,7 @@ def main() -> None:
     parser.add_argument(
         "command", choices=["collect", "select", "fetch", "report", "verdicts", "sheet"]
     )
-    parser.add_argument("--per-agent", type=int, default=1500)
+    parser.add_argument("--per-agent", type=int, default=400)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--agents", nargs="*", help="collect only these agents")
     args = parser.parse_args()
