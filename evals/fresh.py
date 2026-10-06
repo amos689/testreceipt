@@ -284,7 +284,13 @@ OUTCOME = {
 
 
 def verdicts() -> str:
-    """testreceipt's own verdict for each selected pull request, and the rates per agent."""
+    """testreceipt's own verdict for each selected pull request, and the rates per agent.
+
+    The unfiltered population is the main sample: how often an agent's description claims passing
+    tests, how often such a claim meets failing tests at the same commit, and how often CI's tests
+    fail when the description claims nothing. Claims found through the phrase search are added in
+    the last column only.
+    """
     _use_fresh_files()
     bodies = {r["pr_id"]: r["body"] for r in rows()}
     selected = [
@@ -298,31 +304,45 @@ def verdicts() -> str:
             continue
         found, evidence = claims_ci.classify(json.loads(target.read_text(encoding="utf-8")))
         result = reconcile(bodies[row["pr_id"]], OUTCOME[found], evidence)
-        group = "control" if row["claim"].startswith("control") else "claims"
-        table.setdefault((row["agent"], group), Counter())[result.verdict] += 1
-        table[(row["agent"], group)]["ci: " + OUTCOME[found]] += 1
-        out.append({**row, "ci": found, "evidence": evidence, **result.to_dict()})
+        group = "unfiltered" if row["claim"].startswith("control") else "phrase"
+        counter = table.setdefault((row["agent"], group), Counter())
+        counter["n"] += 1
+        counter[result.verdict] += 1
+        decided = OUTCOME[found] in {"tests failed", "tests passed"}
+        if decided:
+            counter[f"decided {result.verdict}"] += 1
+            if OUTCOME[found] == "tests failed":
+                counter[f"failed {result.verdict}"] += 1
+        out.append({**row, "group": group, "ci": found, "evidence": evidence, **result.to_dict()})
     with (RESULTS / "fresh-verdicts.jsonl").open("w", encoding="utf-8") as handle:
         for item in out:
             handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    claim_verdicts = ("CONTRADICTED", "SCOPED", "COUNT", "CONSISTENT")
+
+    def pct(k: int, n: int) -> str:
+        return f"{k}/{n} ({100 * k / n:.1f}%)" if n else "–"
+
     lines = [
-        "| Agent | PRs that claim passing tests, with a CI result | CONTRADICTED | SCOPED | COUNT |"
-        " Control: CI tests failed |",
-        "|---|---|---|---|---|---|",
+        "| Agent | Unfiltered PRs | Claim passing tests | Claimers with a CI result |"
+        " CONTRADICTED | SCOPED | COUNT | No claim: CI tests failed | Reports failures: CI failed |"
+        " CONTRADICTED incl. phrase search |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for agent in AGENTS:
-        c = table.get((agent, "claims"), Counter())
-        decided = c["ci: tests failed"] + c["ci: tests passed"]
-        k = table.get((agent, "control"), Counter())
-        k_decided = k["ci: tests failed"] + k["ci: tests passed"]
-
-        def share(n: int, d: int) -> str:
-            return f"{n} ({100 * n / d:.1f}%)" if d else "–"
-
+        u = table.get((agent, "unfiltered"), Counter())
+        f = table.get((agent, "phrase"), Counter())
+        claimers = sum(u[v] for v in claim_verdicts) + u["UNVERIFIED"]
+        decided = sum(u[f"decided {v}"] for v in claim_verdicts)
+        none_decided = u["decided NO CLAIM"]
+        fail_decided = u["decided REPORTS FAILURES"]
+        both = decided + sum(f[f"decided {v}"] for v in claim_verdicts)
+        both_contra = u["decided CONTRADICTED"] + f["decided CONTRADICTED"]
         lines.append(
-            f"| {agent} | {decided} | {share(c['CONTRADICTED'], decided)} | "
-            f"{share(c['SCOPED'], decided)} | {share(c['COUNT'], decided)} | "
-            f"{share(k['ci: tests failed'], k_decided)} of {k_decided} |"
+            f"| {agent} | {u['n']} | {pct(claimers, u['n'])} | {decided} | "
+            f"{pct(u['decided CONTRADICTED'], decided)} | {pct(u['decided SCOPED'], decided)} | "
+            f"{pct(u['decided COUNT'], decided)} | {pct(u['failed NO CLAIM'], none_decided)} | "
+            f"{pct(u['failed REPORTS FAILURES'], fail_decided)} | {pct(both_contra, both)} |"
         )
     return "\n".join(lines) + "\n"
 
