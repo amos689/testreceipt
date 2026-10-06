@@ -140,7 +140,12 @@ def _sample_day(
     return _pages(github, f"{base} created:{window} sort:created-asc", 2)[1]
 
 
-def collect(per_agent: int, seed: int, agents: list[str] | None = None) -> None:
+def collect(
+    per_agent: int,
+    seed: int,
+    agents: list[str] | None = None,
+    control_target: int | None = None,
+) -> None:
     """Samples days for every agent in turn, until each has `per_agent` pull requests that mention
     tests passing and half as many unfiltered ones. Finished days are remembered in
     `progress.json`, so a stopped run picks up where it left off."""
@@ -149,7 +154,12 @@ def collect(per_agent: int, seed: int, agents: list[str] | None = None) -> None:
     progress_path = DATA / "progress.json"
     done: set[str] = set(json.loads(progress_path.read_text())) if progress_path.exists() else set()
     days = [START + dt.timedelta(days=i) for i in range((END - START).days + 1)]
-    targets = {"claims": per_agent, "control": per_agent // 2}
+    # the phrase search matches loosely (about one in ten of its pull requests has a claim), so the
+    # unfiltered sample is the main source of claims; `per_agent` caps the phrase population
+    targets = {
+        "claims": per_agent,
+        "control": control_target if control_target is not None else per_agent // 2,
+    }
     state = {}
     for agent in AGENTS:
         if agents and agent not in agents:
@@ -213,7 +223,9 @@ def _row(node: dict[str, Any], agent: str, population: str) -> dict[str, Any]:
 
 def rows() -> list[dict[str, Any]]:
     out = []
-    for path in sorted(DATA.glob("*.jsonl")):
+    for path in sorted(DATA / f"{agent}.jsonl" for agent in AGENTS):
+        if not path.exists():
+            continue
         out += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     return out
 
@@ -367,9 +379,12 @@ def main() -> None:
     parser.add_argument("--per-agent", type=int, default=400)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--agents", nargs="*", help="collect only these agents")
+    parser.add_argument(
+        "--control-target", type=int, help="how many unfiltered pull requests to collect per agent"
+    )
     args = parser.parse_args()
     if args.command == "collect":
-        collect(args.per_agent, args.seed, args.agents)
+        collect(args.per_agent, args.seed, args.agents, args.control_target)
     elif args.command == "prefetch":
         prefetch()
     elif args.command == "select":
