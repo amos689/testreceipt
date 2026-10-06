@@ -66,4 +66,6 @@ def test_claims_against_junit(tmp_path, capsys) -> None:  # type: ignore[no-unty
     assert out.startswith("testreceipt SCOPED")
     assert "38 of 40 tests" in out
     description.write_text("All tests pass.\n", encoding="utf-8")
-    assert main(["claims", "--description", str(description), "--junit", str(junit)]) == 1
+    args = ["claims", "--description", str(description), "--junit", str(junit)]
+    assert main(args) == 0
+    assert main([*args, "--fail-on", "contradicted"]) == 1

@@ -1,30 +1,52 @@
 # testreceipt
 
-A receipt for a pull request's tests. When a coding agent writes "all tests pass", testreceipt
-checks that against what the tests did at the same commit. It also checks whether the change itself
-weakened the tests.
+When a coding agent's pull request says "all tests pass", do the tests pass? We checked agent pull
+requests from 2025 and 2026 against CI at the same commit. This repository has the study, its data
+and labels, and the tool that did the checking.
 
-> Status: pre-alpha. The rules are measured on real agent pull requests before a first release.
-> Expect breaking changes.
+## Findings
 
-## Why
+Agent pull requests in repositories with 100+ stars that claimed passing tests and had a CI result:
 
-In 2025, agent pull requests that said "all tests pass" in their description often had failing tests
-in CI at the same commit, and rather more said it about a subset they had picked. We checked 481
-agent PRs from AIDev that made such a claim and had a CI result; two judges reviewed each failing case
-(details: [`evals/results/`](evals/results/)).
+| | 2025 (AIDev) | June–September 2026 |
+|---|---|---|
+| Pull requests | 481 | 644 |
+| Said the tests pass; CI's tests failed at that commit | **8.7%** | **0.3%** (2) |
+| Said a part of the suite passes; the suite failed | 7% | 4.7% |
+| CI's tests failed when the description said nothing about tests | 22% | 3–12%, by agent |
 
-| Agent | PRs with a CI result | Said all tests pass, tests failed | Also counting claims about a subset |
-|---|---|---|---|
-| Claude Code | 178 | 11.2% | 20.8% |
-| Copilot | 212 | 7.1% | 10.8% |
-| Devin | 68 | 4.4% | 13.2% |
-| Codex (lists the commands it ran) | 68 | 0% | 0% |
+- **In 2025 the claim carried little information.** CI's tests failed on 18% of pull requests
+  that claimed passing tests and on 22% of those that said nothing.
+- **By 2026, whole-suite claims contradicted by CI had become rare.** What remains is scope: a
+  claim about one package or one command, while the suite failed somewhere else.
+- **Agents changed how they report tests.**
+  - Copilot went from 23% of descriptions saying tests pass to 1 of 306.
+  - Cursor, Devin and Codex now say it in about 30% of their pull requests, usually naming the
+    command they ran: `cargo test -p <crate>`, `pytest -k <name>`.
 
-CI failed about as often on PRs that claimed passing tests (18%) as on PRs that said nothing about
-tests (22%). Codex differs: it lists the commands it ran and says when they failed.
+Every case where a claim met a failing test step was labelled by two model judges, with
+disagreements settled against the evidence. Method, per-agent tables and limitations:
+[docs/study.md](docs/study.md).
 
-## Use
+## The tool
+
+testreceipt reads a pull request description, finds its claims about tests and their scope, and
+reconciles them with the tests' results at the same commit. It also has fixed rules that flag a
+change weakening its own tests.
+
+**Status: research tool.** On held-out 2026 pull requests:
+- CONTRADICTED was right 2 times in 12;
+- SCOPED was right 23 times in 28.
+
+The misses came from two sources:
+- claims scoped by a command (`-p`, `-pl`, `-k`), which the rules read as whole-suite claims;
+- CI steps named like test runs that had failed on something else.
+
+So by default it reports and never fails a build.
+
+```bash
+uvx --from git+https://github.com/amos689/testreceipt@v0.1.0 testreceipt claims --pr owner/repo#123
+```
 
 **Check what a pull request says against its tests:**
 
@@ -41,8 +63,7 @@ testreceipt claims --description pr.md --junit report.xml    # against a test ru
 | UNSTATED | It lists test commands without saying how they went; the tests failed |
 | CONSISTENT, UNVERIFIED, REPORTS FAILURES, NO CLAIM | As named |
 
-On the 95 adjudicated cases from the study, CONTRADICTED is right 41 times out of 44. These cases
-were also used to develop the rules, and a measurement on 2026 pull requests is in progress.
+`--fail-on contradicted` or `--fail-on scoped` makes these verdicts fail the command.
 
 **Check whether the change weakens tests:**
 
@@ -51,21 +72,21 @@ testreceipt check --base main                          # fixed rules on the diff
 testreceipt check --base main --run "python -m pytest -q"
 ```
 
-`--run` also runs the tests at the base, at the head, and on the head's code with the base's tests.
-A test that the change broke, and that was then skipped or loosened, becomes **caught**. The other
-findings are **suspicious**: changes of the right shape that a deliberate change of behaviour can
-also explain.
-
-On agent PRs no rule saw before, caught findings were right 8 times out of 9. Two rules have caught
-weakening in every batch so far:
-- unconditional skip/xfail of an existing test (17 of 17);
-- a lowered coverage gate.
+- `--run` also runs the tests at the base, at the head, and on the head's code with the base's
+  tests. A test that the change broke, and that was then skipped or loosened, becomes **caught**.
+- The other findings are **suspicious**: changes of the right shape that a deliberate change of
+  behaviour can also explain.
+- **Precision of caught findings** on three batches of agent pull requests that each rule version
+  had not seen: 11 of 17, 6 of 11, then 8 of 9. The latest rules have not met a fourth batch.
+- **Two rules were right every time:**
+  - unconditional skip or xfail of an existing test (17 of 17);
+  - a lowered coverage gate.
 
 **In GitHub Actions:**
 
 ```yaml
 - run: python -m pytest --junitxml=report.xml
-- uses: amos689/testreceipt@v0   # not published yet
+- uses: amos689/testreceipt@v0.1.0
   if: always()
   with:
     junit: report.xml
@@ -74,12 +95,13 @@ weakening in every batch so far:
 The action writes the receipt to the job summary and keeps it updated in one comment on the pull
 request.
 
-**In Claude Code:** add a Stop hook. When a turn ends on "tests pass" that the session's own test
-runs contradict, or that no run since the last edit backs, the hook sends the agent back once to run
-them:
+**In Claude Code:** a Stop hook. A turn may end on "tests pass" when the session's own test runs
+contradict the claim, or when no run since the last edit backs it. The hook then sends the agent
+back once to run them. Its precision has not been measured.
 
-```json
-{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "testreceipt hook claude-stop"}]}]}}
+```
+/plugin marketplace add amos689/testreceipt
+/plugin install testreceipt@testreceipt
 ```
 
 ## Rules for test changes
@@ -110,6 +132,15 @@ them:
 | TR404 | coverage threshold lowered | caught |
 | TR405 | test command removed, commented out, disabled or reduced to `--collect-only` | caught or suspicious |
 | TR406 | testreceipt's own step or configuration weakened | caught |
+
+## Data
+
+- **2025:** [AIDev](https://huggingface.co/datasets/hao-li/AIDev) (CC BY 4.0), revision `c63c8a5`.
+- **Rule development:** [SWE-bench](https://github.com/princeton-nlp/SWE-bench) (MIT).
+- **2026:** collected from GitHub's public API by [`evals/fresh.py`](evals/fresh.py).
+- **Labels and judge sheets:** [`evals/`](evals/).
+
+The judges were models; the limitations section of the study says what that means for the numbers.
 
 ## License
 

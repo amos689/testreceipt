@@ -100,8 +100,9 @@ def _parser() -> argparse.ArgumentParser:
     said.add_argument(
         "--fail-on",
         choices=sorted(CLAIMS_EXIT_ON),
-        default="contradicted",
-        help="exit with status 1 on these verdicts (default: contradicted)",
+        default="never",
+        help="exit with status 1 on these verdicts (default: never; see docs/study.md for how "
+        "often each verdict was right)",
     )
     return parser
 

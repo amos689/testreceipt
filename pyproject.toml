@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "testreceipt"
 dynamic = ["version"]
-description = "A receipt that a coding agent's green test run was earned: checks a change for weakened tests and test claims the test runner contradicts."
+description = "Do coding agents' \"all tests pass\" claims hold? A study of agent pull requests against CI, and the tool that checks claims and weakened tests."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

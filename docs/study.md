@@ -148,6 +148,19 @@ by CI went from about one in eleven to about one in three hundred.
 - **"Tests pass" may refer to the agent's own environment.** A contradiction means the claim and CI
   disagree at the same commit. It does not mean the agent lied.
 - **Only explicit claims are counted.** An agent that never claims anything is never contradicted.
+- **The two years were sampled differently.**
+  - 2025 is AIDev's collection.
+  - 2026 comes from GitHub search on each agent's signature. Agents whose pull requests carry no
+    signature, and repositories under 100 stars, are missing from both.
+- **The 2026 tool verdicts were frozen before measurement,** and the 2026 cases were not used to
+  change the rules.
+
+## Data and licenses
+
+- AIDev (CC BY 4.0): Hao Li et al., <https://huggingface.co/datasets/hao-li/AIDev>.
+- SWE-bench (MIT), used for rule development only.
+- The 2026 pull requests and CI results are public GitHub data, fetched in October 2026. Only
+  labels, identifiers and short excerpts are kept in this repository.
 
 ## Reproduce
 

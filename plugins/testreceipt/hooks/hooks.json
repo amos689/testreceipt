@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uvx --quiet testreceipt hook claude-stop",
+            "command": "uvx --quiet --from git+https://github.com/amos689/testreceipt@v0.1.0 testreceipt hook claude-stop",
             "timeout": 60
           }
         ]

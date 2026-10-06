@@ -19,8 +19,8 @@ inputs:
     default: "true"
   fail-on:
     description: >-
-      Fail the step when the description is contradicted ("contradicted"), also when its claim covers only part of the suite ("scoped"), or never ("never").
-    default: contradicted
+      Fail the step when the description is contradicted ("contradicted"), also when its claim covers only part of the suite ("scoped"), or never ("never"). The default only reports: on 2026 pull requests CONTRADICTED was right 2 times in 12.
+    default: never
   fail-on-changes:
     description: >-
       Fail the step when the change weakens tests with hard evidence ("caught"), also when it looks suspicious ("suspicious"), or never ("never").

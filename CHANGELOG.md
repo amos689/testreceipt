@@ -1,8 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.0] - 2026-10-06
+
+First public version, released with the study in `docs/study.md`. The tool is a research tool: its
+claim verdicts report and never fail a build unless `--fail-on` says so.
 
 ### Added
+
+- `docs/study.md`: agent pull requests' test claims against CI, in 2025 (AIDev) and 2026, with labels
+  and judge sheets in `evals/`.
 
 - `testreceipt claims`: checks what a pull request description says about its tests against what
   the tests did at the same commit, read from the commit's CI (`--pr`) or from a test run's JUnit
