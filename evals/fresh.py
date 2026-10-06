@@ -339,10 +339,30 @@ def sheet(seed: int) -> None:
     print(f"{len(picked)} cases in {RESULTS / 'sheet-fresh.md'}", file=sys.stderr)
 
 
+def prefetch() -> None:
+    """CI results for every collected pull request not fetched yet (not limited by search)."""
+    _use_fresh_files()
+    github = GitHub()
+    todo = [
+        {**r, "claim": r["population"], "claim_line": ""}
+        for r in rows()
+        if not (CACHE / f"{r['pr_id']}.json").exists()
+    ]
+    print(f"{len(todo)} pull requests to fetch", file=sys.stderr, flush=True)
+    for start in range(0, len(todo), 10):
+        try:
+            claims_ci._graphql_batch(github, todo[start : start + 10])
+        except RuntimeError as error:
+            print(f"  {error}", file=sys.stderr, flush=True)
+        if (start // 10) % 20 == 0:
+            print(f"  {start + 10}/{len(todo)}", file=sys.stderr, flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command", choices=["collect", "select", "fetch", "report", "verdicts", "sheet"]
+        "command",
+        choices=["collect", "prefetch", "select", "fetch", "report", "verdicts", "sheet"],
     )
     parser.add_argument("--per-agent", type=int, default=400)
     parser.add_argument("--seed", type=int, default=2026)
@@ -350,6 +370,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "collect":
         collect(args.per_agent, args.seed, args.agents)
+    elif args.command == "prefetch":
+        prefetch()
     elif args.command == "select":
         select(args.per_agent, args.seed)
     elif args.command == "fetch":
