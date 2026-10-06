@@ -356,9 +356,7 @@ def sheet(seed: int) -> None:
     rng = random.Random(seed)
     picked = []
     for verdict, limit in (("CONTRADICTED", 100), ("SCOPED", 50), ("COUNT", 50)):
-        pool = [
-            i for i in items if i["verdict"] == verdict and not i["claim"].startswith("control")
-        ]
+        pool = [i for i in items if i["verdict"] == verdict]
         picked += pool if len(pool) <= limit else rng.sample(pool, limit)
     lines = ["# Fresh M2 (2026): testreceipt's verdicts for the judges", ""]
     for n, item in enumerate(picked, 1):
