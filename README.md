@@ -1,4 +1,25 @@
-# testreceipt
+<div align="center">
+
+![testreceipt](docs/assets/brand/testreceipt-logo.svg)
+
+**Do coding agents' "all tests pass" claims hold?<br>
+Agent pull requests checked against CI in 2025 and 2026, and the tool that checked them.**
+
+[![CI](https://github.com/amos689/testreceipt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/amos689/testreceipt/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/amos689/testreceipt?label=release&color=d9822b)](https://github.com/amos689/testreceipt/releases)
+[![MIT license](docs/assets/badges/license.svg)](LICENSE)
+[![Python 3.11 to 3.14](docs/assets/badges/python.svg)](pyproject.toml)
+
+[![Study: agent pull requests from 2025 and 2026](docs/assets/badges/study.svg)](docs/study.md)
+[![GitHub Action, report-only by default](docs/assets/badges/action.svg)](#the-tool)
+[![Claude Code Stop hook](docs/assets/badges/hook.svg)](#the-tool)
+[![Tested on Windows, Linux and macOS](docs/assets/badges/platforms.svg)](https://github.com/amos689/testreceipt/actions/workflows/ci.yml)
+
+[The study](docs/study.md) · [The tool](#the-tool) ·
+[Releases](https://github.com/amos689/testreceipt/releases) ·
+[Feedback](https://github.com/amos689/testreceipt/issues/new)
+
+</div>
 
 When a coding agent's pull request says "all tests pass", do the tests pass? We checked agent pull
 requests from 2025 and 2026 against CI at the same commit. This repository has the study, its data
